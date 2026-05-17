@@ -1,16 +1,20 @@
-# React + Vite
+# MR.DEVS CRM
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+A lead management system built for Mr-Devs agency to track hospital and business outreach in Vehari, Pakistan.
 
-Currently, two official plugins are available:
+## Tech Stack
+- React + Vite
+- Tailwind CSS
+- Supabase (PostgreSQL database)
+- Deployed on Vercel
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+## Features
+- Password protected login
+- 44+ hospital leads from Vehari
+- Search, filter by priority, contact status, number type
+- Add, edit, delete leads
+- Real-time data from Supabase
+- Fully responsive
 
-## React Compiler
-
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
-
-## Expanding the ESLint configuration
-
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+## Built by
+Abdul-Raqeeb & Mubeen — Mr-Devs Agency, Vehari
