@@ -11,7 +11,7 @@ const FIELDS = [
   { key: 'has_website', label: 'Has Website', type: 'select', options: ['No', 'Yes'] },
   { key: 'priority', label: 'Priority', type: 'select', options: ['High', 'Medium', 'Low'] },
   { key: 'fb_found', label: 'FB Found', type: 'select', options: ['No', 'Yes'] },
-  { key: 'contacted', label: 'Contacted', type: 'select', options: ['No', 'Yes'] },
+  { key: 'contacted', label: 'Contacted', type: 'select', options: ['No', 'Queued', 'Attempted', 'Yes', 'Not Reachable'] },
   { key: 'reply', label: 'Reply', type: 'select', options: ['', 'Yes', 'No', 'Later'] },
   { key: 'notes', label: 'Notes', type: 'textarea', full: true },
 ]

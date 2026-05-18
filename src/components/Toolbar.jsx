@@ -12,10 +12,13 @@ export default function Toolbar({ search, setSearch, filterPriority, setFilterPr
         <option value="Low">Low</option>
       </select>
       <select className="input-base" style={{ width: 'auto' }} value={filterContacted} onChange={e => setFilterContacted(e.target.value)}>
-        <option value="">All contacted</option>
-        <option value="Yes">Contacted</option>
-        <option value="No">Not contacted</option>
-      </select>
+  <option value="">All</option>
+  <option value="Yes"> Contacted</option>
+  <option value="Queued"> Queued</option>
+  <option value="Attempted"> Attempted</option>
+  <option value="Not Reachable"> Not Reachable</option>
+  <option value="No"> Not Contacted</option>
+</select>
       <select className="input-base" style={{ width: 'auto' }} value={filterNumber} onChange={e => setFilterNumber(e.target.value)}>
         <option value="">All numbers</option>
         <option value="Mobile ✅">Mobile</option>
