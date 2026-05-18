@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { supabase } from '../lib/supabase'
 import StatsBar from '../components/StatsBar'
 import Toolbar from '../components/Toolbar'
@@ -7,8 +7,6 @@ import LeadModal from '../components/LeadModal'
 
 export default function Dashboard({ onLogout }) {
   const [leads, setLeads] = useState([])
-  const [history, setHistory] = useState([])
-  const [future, setFuture] = useState([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
   const [filterPriority, setFilterPriority] = useState('')
@@ -18,7 +16,15 @@ export default function Dashboard({ onLogout }) {
   const [editingLead, setEditingLead] = useState(null)
   const [toast, setToast] = useState('')
 
+  const historyRef = useRef([])
+  const futureRef = useRef([])
+  const leadsRef = useRef([])
+
   useEffect(() => { fetchLeads() }, [])
+
+  useEffect(() => {
+    leadsRef.current = leads
+  }, [leads])
 
   useEffect(() => {
     const handleKey = (e) => {
@@ -27,7 +33,7 @@ export default function Dashboard({ onLogout }) {
     }
     window.addEventListener('keydown', handleKey)
     return () => window.removeEventListener('keydown', handleKey)
-  }, [history, future, leads])
+  }, [])
 
   const showToast = (msg) => {
     setToast(msg)
@@ -44,36 +50,42 @@ export default function Dashboard({ onLogout }) {
         return (b.rating || 0) - (a.rating || 0)
       })
       setLeads(sorted)
-      setHistory([])
-      setFuture([])
+      leadsRef.current = sorted
+      historyRef.current = []
+      futureRef.current = []
     }
     setLoading(false)
   }
 
-  const pushHistory = (prevLeads) => {
-    setHistory(h => [...h, prevLeads])
-    setFuture([])
+  const updateLeads = (newLeads) => {
+    setLeads(newLeads)
+    leadsRef.current = newLeads
   }
 
-  const undo = useCallback(async () => {
-    if (history.length === 0) return
-    const prev = history[history.length - 1]
-    setFuture(f => [leads, ...f])
-    setHistory(h => h.slice(0, -1))
-    setLeads(prev)
+  const pushHistory = () => {
+    historyRef.current = [...historyRef.current, [...leadsRef.current]]
+    futureRef.current = []
+  }
+
+  const undo = async () => {
+    if (historyRef.current.length === 0) { showToast('Nothing to undo'); return }
+    const prev = historyRef.current[historyRef.current.length - 1]
+    futureRef.current = [leadsRef.current, ...futureRef.current]
+    historyRef.current = historyRef.current.slice(0, -1)
+    updateLeads(prev)
     await syncToSupabase(prev)
     showToast('Undo done')
-  }, [history, leads])
+  }
 
-  const redo = useCallback(async () => {
-    if (future.length === 0) return
-    const next = future[0]
-    setHistory(h => [...h, leads])
-    setFuture(f => f.slice(1))
-    setLeads(next)
+  const redo = async () => {
+    if (futureRef.current.length === 0) { showToast('Nothing to redo'); return }
+    const next = futureRef.current[0]
+    historyRef.current = [...historyRef.current, leadsRef.current]
+    futureRef.current = futureRef.current.slice(1)
+    updateLeads(next)
     await syncToSupabase(next)
     showToast('Redo done')
-  }, [future, leads])
+  }
 
   const syncToSupabase = async (newLeads) => {
     await supabase.from('leads').delete().neq('hospital_name', '')
@@ -92,22 +104,26 @@ export default function Dashboard({ onLogout }) {
   })
 
   const handleSave = async (form) => {
-    pushHistory(leads)
+    pushHistory()
+    const updatedLeads = editingLead
+      ? leadsRef.current.map(l => l.hospital_name === editingLead.hospital_name ? { ...l, ...form } : l)
+      : [...leadsRef.current, form]
+    updateLeads(updatedLeads)
     if (editingLead) {
       await supabase.from('leads').update(form).eq('hospital_name', editingLead.hospital_name)
     } else {
       await supabase.from('leads').insert([form])
     }
     setModalOpen(false)
-    fetchLeads()
     showToast(editingLead ? 'Lead updated' : 'Lead added')
   }
 
   const handleDelete = async (lead) => {
     if (!confirm(`Delete ${lead.hospital_name}?`)) return
-    pushHistory(leads)
+    pushHistory()
+    const updatedLeads = leadsRef.current.filter(l => l.hospital_name !== lead.hospital_name)
+    updateLeads(updatedLeads)
     await supabase.from('leads').delete().eq('hospital_name', lead.hospital_name)
-    fetchLeads()
     showToast('Lead deleted')
   }
 
@@ -128,20 +144,10 @@ export default function Dashboard({ onLogout }) {
           <span style={{ fontSize: '12px', color: '#555' }}>Lead CRM</span>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-          <button
-            onClick={undo}
-            disabled={history.length === 0}
-            title="Undo (Ctrl+Z)"
-            style={{ background: 'none', border: '0.5px solid #2a2a2a', borderRadius: '6px', color: history.length === 0 ? '#333' : '#a0a0a0', cursor: history.length === 0 ? 'not-allowed' : 'pointer', padding: '5px 10px', fontSize: '13px' }}
-          >
+          <button onClick={undo} style={{ background: 'none', border: '0.5px solid #2a2a2a', borderRadius: '6px', color: '#a0a0a0', cursor: 'pointer', padding: '5px 10px', fontSize: '13px' }}>
             ↩ Undo
           </button>
-          <button
-            onClick={redo}
-            disabled={future.length === 0}
-            title="Redo (Ctrl+Y)"
-            style={{ background: 'none', border: '0.5px solid #2a2a2a', borderRadius: '6px', color: future.length === 0 ? '#333' : '#a0a0a0', cursor: future.length === 0 ? 'not-allowed' : 'pointer', padding: '5px 10px', fontSize: '13px' }}
-          >
+          <button onClick={redo} style={{ background: 'none', border: '0.5px solid #2a2a2a', borderRadius: '6px', color: '#a0a0a0', cursor: 'pointer', padding: '5px 10px', fontSize: '13px' }}>
             ↪ Redo
           </button>
           <span style={{ fontSize: '12px', color: '#555' }}>{filteredLeads.length} leads</span>
