@@ -166,7 +166,7 @@ export default function ImportModal({ file, activeProject, customColumns = [], o
                     ))}
                   </tbody>
                 </table>
-
+              </div>
             </>
           ) : (
             <>
@@ -222,7 +222,7 @@ export default function ImportModal({ file, activeProject, customColumns = [], o
                     ))}
                   </tbody>
                 </table>
-
+              </div>
             </>
           )}
         </div>
