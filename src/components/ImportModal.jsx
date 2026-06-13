@@ -140,11 +140,9 @@ export default function ImportModal({ file, activeProject, customColumns = [], o
       return
     }
 
-    // Check for duplicate phones OR hospital_names globally (across all projects)
-    // Since hospital_name or phone might be the primary key, we MUST prevent duplicates table-wide to avoid leads_pkey errors
-    const { data: existingLeads } = await supabase.from('leads').select('phone, hospital_name')
+    // Check for duplicate phones globally (across all projects)
+    const { data: existingLeads } = await supabase.from('leads').select('phone')
     const existingPhones = new Set((existingLeads || []).map(l => l.phone?.trim()).filter(Boolean))
-    const existingNames = new Set((existingLeads || []).map(l => l.hospital_name?.trim().toLowerCase()).filter(Boolean))
 
     const rowsToInsert = []
     let skipped = 0
@@ -152,19 +150,18 @@ export default function ImportModal({ file, activeProject, customColumns = [], o
       const p = row.phone?.trim()
       const n = row.hospital_name?.trim().toLowerCase()
       
-      // Since hospital_name is required (not-null constraint), skip rows that are missing it
+      // Since hospital_name is still required (not-null constraint), skip rows that are completely missing it
       if (!n) {
         skipped++
         continue
       }
       
-      if ((p && existingPhones.has(p)) || existingNames.has(n)) {
+      if (p && existingPhones.has(p)) {
         skipped++
       } else {
         rowsToInsert.push(row)
         if (p) existingPhones.add(p)
-        existingNames.add(n)
-    }
+      }
     }
 
     if (rowsToInsert.length === 0) {

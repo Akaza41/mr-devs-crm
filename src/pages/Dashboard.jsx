@@ -160,11 +160,11 @@ export default function Dashboard({ role, onLogout }) {
     if (!activeProject) return
     pushHistory()
     const updatedLeads = editingLead
-      ? leadsRef.current.map(l => l.hospital_name === editingLead.hospital_name ? { ...l, ...form } : l)
+      ? leadsRef.current.map(l => l.id === editingLead.id ? { ...l, ...form } : l)
       : [...leadsRef.current, { ...form, project_id: activeProject.id }]
     updateLeads(updatedLeads)
     if (editingLead) {
-      await supabase.from('leads').update(form).eq('hospital_name', editingLead.hospital_name).eq('project_id', activeProject.id)
+      await supabase.from('leads').update(form).eq('id', editingLead.id)
     } else {
       await supabase.from('leads').insert([{ ...form, project_id: activeProject.id }])
     }
@@ -175,9 +175,9 @@ export default function Dashboard({ role, onLogout }) {
   const handleDelete = async (lead) => {
     if (!confirm(`Delete ${lead.hospital_name}?`)) return
     pushHistory()
-    const updatedLeads = leadsRef.current.filter(l => l.hospital_name !== lead.hospital_name)
+    const updatedLeads = leadsRef.current.filter(l => l.id !== lead.id)
     updateLeads(updatedLeads)
-    await supabase.from('leads').delete().eq('hospital_name', lead.hospital_name).eq('project_id', activeProject.id)
+    await supabase.from('leads').delete().eq('id', lead.id)
     showToast('Lead deleted')
   }
 
