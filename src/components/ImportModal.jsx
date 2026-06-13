@@ -152,12 +152,18 @@ export default function ImportModal({ file, activeProject, customColumns = [], o
       const p = row.phone?.trim()
       const n = row.hospital_name?.trim().toLowerCase()
       
-      if ((p && existingPhones.has(p)) || (n && existingNames.has(n))) {
+      // Since hospital_name is required (not-null constraint), skip rows that are missing it
+      if (!n) {
+        skipped++
+        continue
+      }
+      
+      if ((p && existingPhones.has(p)) || existingNames.has(n)) {
         skipped++
       } else {
         rowsToInsert.push(row)
         if (p) existingPhones.add(p)
-        if (n) existingNames.add(n)
+        existingNames.add(n)
     }
     }
 
