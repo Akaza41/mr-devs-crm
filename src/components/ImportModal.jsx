@@ -19,9 +19,14 @@ export default function ImportModal({ file, activeProject, customColumns = [], o
 
   const dbCols = ['hospital_name', 'address', 'type', 'rating', 'phone', 'number_type', 'has_website', 'priority', 'fb_found', 'contacted', 'reply', 'notes', ...customColumns.map(c => c.column_name)]
 
+  // Column names that should NEVER be mapped — these are row IDs / serial numbers from Excel
+  const blocklist = ['id', 'no', 'sr', 'sr_no', 'sno', 's_no', 'serial', 'serial_no', 'row', 'row_no', 'index', 'sl', 'sl_no', 'project_id']
+
   const matchHeader = (header) => {
     if (!header) return null
     const norm = header.toLowerCase().replace(/[^a-z0-9]/g, '_').replace(/_+/g, '_').replace(/^_|_$/g, '')
+    if (blocklist.includes(norm)) return null
+    if (norm === '#' || header.trim() === '#') return null
     if (dbCols.includes(norm)) return norm
     const found = dbCols.find(c => c.includes(norm) || norm.includes(c))
     return found || null
@@ -98,7 +103,8 @@ export default function ImportModal({ file, activeProject, customColumns = [], o
     if (selectedRows.size === 0 || selectedCols.size === 0 || !activeProject) return
     setLoading(true)
     
-    const rowsToInsert = []
+    // Build rows from selections
+    const rawInsertRows = []
     dataRows.forEach((row, rowIdx) => {
       if (!selectedRows.has(rowIdx)) return
       
@@ -110,14 +116,36 @@ export default function ImportModal({ file, activeProject, customColumns = [], o
           newRow[h.mapped] = !val ? null : val
         }
       })
+      // Always strip id and project_id from mapped Excel data — let Supabase auto-generate
+      delete newRow.id
       if (Object.keys(newRow).length > 1) {
-        rowsToInsert.push(newRow)
+        rawInsertRows.push(newRow)
       }
     })
 
-    if (rowsToInsert.length === 0) {
+    if (rawInsertRows.length === 0) {
       alert('No valid data to import based on selections.')
       setLoading(false)
+      return
+    }
+
+    // Check for duplicate phone numbers against existing leads in this project
+    const { data: existingLeads } = await supabase.from('leads').select('phone').eq('project_id', activeProject.id)
+    const existingPhones = new Set((existingLeads || []).map(l => l.phone?.trim()).filter(Boolean))
+
+    const rowsToInsert = []
+    let skipped = 0
+    for (const row of rawInsertRows) {
+      if (row.phone && existingPhones.has(row.phone.trim())) {
+        skipped++
+      } else {
+        rowsToInsert.push(row)
+        if (row.phone) existingPhones.add(row.phone.trim()) // prevent duplicates within the import itself
+      }
+    }
+
+    if (rowsToInsert.length === 0) {
+      onSuccess(0, skipped)
       return
     }
 
@@ -127,7 +155,7 @@ export default function ImportModal({ file, activeProject, customColumns = [], o
       setLoading(false)
       return
     }
-    onSuccess(rowsToInsert.length)
+    onSuccess(rowsToInsert.length, skipped)
   }
 
   return (
