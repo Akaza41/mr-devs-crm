@@ -140,19 +140,25 @@ export default function ImportModal({ file, activeProject, customColumns = [], o
       return
     }
 
-    // Check for duplicate phone numbers
-    const { data: existingLeads } = await supabase.from('leads').select('phone').eq('project_id', activeProject.id)
+    // Check for duplicate phones OR hospital_names against existing leads in this project
+    // Since hospital_name is the primary key, we MUST prevent duplicates on it to avoid leads_pkey errors
+    const { data: existingLeads } = await supabase.from('leads').select('phone, hospital_name').eq('project_id', activeProject.id)
     const existingPhones = new Set((existingLeads || []).map(l => l.phone?.trim()).filter(Boolean))
+    const existingNames = new Set((existingLeads || []).map(l => l.hospital_name?.trim().toLowerCase()).filter(Boolean))
 
     const rowsToInsert = []
     let skipped = 0
     for (const row of rawInsertRows) {
-      if (row.phone && existingPhones.has(row.phone.trim())) {
+      const p = row.phone?.trim()
+      const n = row.hospital_name?.trim().toLowerCase()
+      
+      if ((p && existingPhones.has(p)) || (n && existingNames.has(n))) {
         skipped++
       } else {
         rowsToInsert.push(row)
-        if (row.phone) existingPhones.add(row.phone.trim())
-      }
+        if (p) existingPhones.add(p)
+        if (n) existingNames.add(n)
+    }
     }
 
     if (rowsToInsert.length === 0) {
