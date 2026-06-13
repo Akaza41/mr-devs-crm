@@ -20,13 +20,15 @@ export default function ImportModal({ file, activeProject, customColumns = [], o
   const dbCols = ['hospital_name', 'address', 'type', 'rating', 'phone', 'number_type', 'has_website', 'priority', 'fb_found', 'contacted', 'reply', 'notes', ...customColumns.map(c => c.column_name)]
 
   // Column names that should NEVER be mapped — these are row IDs / serial numbers from Excel
-  const blocklist = ['id', 'no', 'sr', 'sr_no', 'sno', 's_no', 'serial', 'serial_no', 'row', 'row_no', 'index', 'sl', 'sl_no', 'project_id']
+  const blocklist = ['id', 'no', 'sr', 'sr_no', 'sno', 's_no', 'serial', 'serial_no', 'row', 'row_no', 'index', 'sl', 'sl_no', 'project_id', '#']
 
   const matchHeader = (header) => {
     if (!header) return null
-    const norm = header.toLowerCase().replace(/[^a-z0-9]/g, '_').replace(/_+/g, '_').replace(/^_|_$/g, '')
+    const trimmed = header.toString().trim()
+    // Block # column immediately
+    if (trimmed === '#') return null
+    const norm = trimmed.toLowerCase().replace(/[^a-z0-9]/g, '_').replace(/_+/g, '_').replace(/^_|_$/g, '')
     if (blocklist.includes(norm)) return null
-    if (norm === '#' || header.trim() === '#') return null
     if (dbCols.includes(norm)) return norm
     const found = dbCols.find(c => c.includes(norm) || norm.includes(c))
     return found || null
@@ -41,7 +43,6 @@ export default function ImportModal({ file, activeProject, customColumns = [], o
         const workbook = xlsx.read(data, { type: 'array' })
         const sheetName = workbook.SheetNames[0]
         const worksheet = workbook.Sheets[sheetName]
-        // Parse as 2D array
         const json = xlsx.utils.sheet_to_json(worksheet, { header: 1, defval: '' })
         
         if (json.length === 0) {
@@ -51,7 +52,6 @@ export default function ImportModal({ file, activeProject, customColumns = [], o
         }
 
         setRawRows(json)
-        // Auto-detect header row (first row with mostly string headers)
         const guessIdx = json.findIndex(row => row.filter(cell => typeof cell === 'string' && cell.trim() !== '').length > 1)
         setHeaderRowIdx(guessIdx >= 0 ? guessIdx : 0)
         setLoading(false)
@@ -65,7 +65,6 @@ export default function ImportModal({ file, activeProject, customColumns = [], o
 
   const handleNext = () => {
     const headers = rawRows[headerRowIdx] || []
-    // Extract rows after header, filter completely empty rows
     const data = rawRows.slice(headerRowIdx + 1).filter(r => r.length > 0 && r.some(c => c !== ''))
 
     const mapped = headers.map(h => ({
@@ -76,9 +75,8 @@ export default function ImportModal({ file, activeProject, customColumns = [], o
     setMappedHeaders(mapped)
     setDataRows(data)
 
-    // Select all by default
     const allRows = new Set(data.map((_, i) => i))
-    const allCols = new Set(mapped.map((_, i) => i).filter(i => mapped[i].mapped)) // Only pre-select mapped cols
+    const allCols = new Set(mapped.map((_, i) => i).filter(i => mapped[i].mapped))
     setSelectedRows(allRows)
     setSelectedCols(allCols)
 
@@ -103,21 +101,34 @@ export default function ImportModal({ file, activeProject, customColumns = [], o
     if (selectedRows.size === 0 || selectedCols.size === 0 || !activeProject) return
     setLoading(true)
     
-    // Build rows from selections
+    // SAFE LIST of allowed DB columns — only these can ever be inserted
+    const allowedColumns = new Set([
+      'hospital_name', 'address', 'type', 'rating', 'phone', 'number_type',
+      'has_website', 'priority', 'fb_found', 'contacted', 'reply', 'notes',
+      'project_id',
+      ...customColumns.map(c => c.column_name)
+    ])
+
     const rawInsertRows = []
     dataRows.forEach((row, rowIdx) => {
       if (!selectedRows.has(rowIdx)) return
       
-      const newRow = { project_id: activeProject.id }
+      const newRow = {}
       mappedHeaders.forEach((h, colIdx) => {
         if (!selectedCols.has(colIdx)) return
-        if (h.mapped) {
+        // Only insert if mapped AND in the allowed list — never insert 'id'
+        if (h.mapped && allowedColumns.has(h.mapped)) {
           const val = row[colIdx]?.toString().trim()
-          newRow[h.mapped] = !val ? null : val
+          newRow[h.mapped] = !val || val === '' ? null : val
         }
       })
-      // Always strip id and project_id from mapped Excel data — let Supabase auto-generate
+
+      // Always set project_id from activeProject — never from Excel
+      newRow.project_id = activeProject.id
+
+      // Final safety — delete id no matter what
       delete newRow.id
+
       if (Object.keys(newRow).length > 1) {
         rawInsertRows.push(newRow)
       }
@@ -129,7 +140,7 @@ export default function ImportModal({ file, activeProject, customColumns = [], o
       return
     }
 
-    // Check for duplicate phone numbers against existing leads in this project
+    // Check for duplicate phone numbers
     const { data: existingLeads } = await supabase.from('leads').select('phone').eq('project_id', activeProject.id)
     const existingPhones = new Set((existingLeads || []).map(l => l.phone?.trim()).filter(Boolean))
 
@@ -140,7 +151,7 @@ export default function ImportModal({ file, activeProject, customColumns = [], o
         skipped++
       } else {
         rowsToInsert.push(row)
-        if (row.phone) existingPhones.add(row.phone.trim()) // prevent duplicates within the import itself
+        if (row.phone) existingPhones.add(row.phone.trim())
       }
     }
 
@@ -149,24 +160,17 @@ export default function ImportModal({ file, activeProject, customColumns = [], o
       return
     }
 
-    // Final strict cleaning step as requested
-    const cleanedRows = rowsToInsert.map(row => {
-      // Destructure to remove 'id' and '#' just in case they slipped through
-      const { id, '#': rowNum, ...cleanRow } = row
-      return cleanRow
-    })
+    // Log sample to verify no id field
+    console.log('Sample row before insert (should have NO id field):', JSON.stringify(rowsToInsert[0]))
+    console.log('Keys in row:', Object.keys(rowsToInsert[0]))
 
-    if (cleanedRows.length > 0) {
-      console.log('Sample cleaned row before insert:', cleanedRows[0])
-    }
-
-    const { error } = await supabase.from('leads').insert(cleanedRows)
+    const { error } = await supabase.from('leads').insert(rowsToInsert)
     if (error) {
       alert('Error importing leads: ' + error.message)
       setLoading(false)
       return
     }
-    onSuccess(cleanedRows.length, skipped)
+    onSuccess(rowsToInsert.length, skipped)
   }
 
   return (
