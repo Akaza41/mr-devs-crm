@@ -6,7 +6,7 @@ function Badge({ text, type }) {
     red: { background: 'rgba(248,113,113,0.12)', color: '#f87171' },
     yellow: { background: 'rgba(250,204,21,0.12)', color: '#facc15' },
     blue: { background: 'rgba(96,165,250,0.12)', color: '#60a5fa' },
-    gray: { background: '#242424', color: '#555' },
+    gray: { background: '#242424', color: '#a0a0a0' },
   }
   return (
     <span style={{ ...styles[type] || styles.gray, display: 'inline-flex', alignItems: 'center', padding: '2px 8px', borderRadius: '4px', fontSize: '11px', fontWeight: '500', whiteSpace: 'nowrap' }}>
@@ -16,18 +16,39 @@ function Badge({ text, type }) {
 }
 
 function PriorityBadge({ p }) {
-  if (p === 'High') return <Badge text="High" type="green" />
+  if (p === 'High') return <Badge text="High" type="red" />
   if (p === 'Medium') return <Badge text="Medium" type="yellow" />
-  return <Badge text="Low" type="red" />
+  if (p === 'Low') return <Badge text="Low" type="blue" />
+  return <Badge text="—" type="gray" />
 }
 
 function YesNo({ v }) {
-  return <Badge text={v} type={v === 'Yes' ? 'green' : 'gray'} />
+  return <Badge text={v === 'Yes' || v === true ? 'Yes' : 'No'} type={v === 'Yes' || v === true ? 'green' : 'gray'} />
+}
+
+function FbBadge({ v }) {
+  if (v && v !== 'No') return <Badge text="Yes" type="green" />
+  return <Badge text="No" type="gray" />
+}
+
+function ContactedBadge({ v }) {
+  if (v === 'Yes') return <Badge text="Yes" type="green" />
+  if (v === 'Attempted') return <Badge text="Attempted" type="yellow" />
+  if (v === 'Queued') return <Badge text="Queued" type="blue" />
+  if (v === 'Not Reachable') return <Badge text="Not Reachable" type="red" />
+  return <Badge text="No" type="gray" />
+}
+
+function ReplyBadge({ v }) {
+  if (v === 'Yes') return <Badge text="Yes" type="green" />
+  if (v === 'Later') return <Badge text="Later" type="yellow" />
+  if (v === 'No') return <Badge text="No" type="red" />
+  return <Badge text="—" type="gray" />
 }
 
 function NumberBadge({ v }) {
-  if (v === 'Mobile ✅') return <Badge text="Mobile" type="blue" />
-  if (v === 'Landline ⚠️') return <Badge text="Landline" type="yellow" />
+  if (v === 'Mobile ✅' || v === 'Mobile') return <Badge text="Mobile ✅" type="green" />
+  if (v === 'Landline ⚠️' || v === 'Landline') return <Badge text="Landline ⚠️" type="yellow" />
   return <Badge text="No Number" type="red" />
 }
 
@@ -68,10 +89,10 @@ export default function LeadsTable({ role, leads, customColumns = [], onEdit, on
   return (
     <div className="table-wrap">
       <table>
-        <thead>
+        <thead style={{ background: '#1a1a1a' }}>
           <tr>
             {['#', 'Hospital Name', 'Type', 'Rating', 'Phone', 'Number', 'Website', 'Priority', 'FB', 'Contacted', 'Reply', 'Notes', ...customColumns.map(c => c.display_name), role !== 'viewer' ? '' : null].filter(h => h !== null).map((h, i) => (
-              <th key={i}>{h}</th>
+              <th key={i} style={{ padding: '10px 16px', color: '#ededed', fontWeight: '500' }}>{h}</th>
             ))}
           </tr>
         </thead>
@@ -100,17 +121,15 @@ export default function LeadsTable({ role, leads, customColumns = [], onEdit, on
               <Cell id={`${i}-number`} textToCopy={lead.number_type}><NumberBadge v={lead.number_type} /></Cell>
               <Cell id={`${i}-web`} textToCopy={lead.has_website}><YesNo v={lead.has_website} /></Cell>
               <Cell id={`${i}-pri`} textToCopy={lead.priority}><PriorityBadge p={lead.priority} /></Cell>
-              <Cell id={`${i}-fb`} textToCopy={lead.fb_found}><YesNo v={lead.fb_found} /></Cell>
-              <Cell id={`${i}-cont`} textToCopy={lead.contacted}><YesNo v={lead.contacted} /></Cell>
-              <Cell id={`${i}-rep`} textToCopy={lead.reply}>
-                {lead.reply ? <Badge text={lead.reply} type={lead.reply === 'Yes' ? 'green' : lead.reply === 'Later' ? 'yellow' : 'red'} /> : <span style={{ color: '#555' }}>—</span>}
-              </Cell>
+              <Cell id={`${i}-fb`} textToCopy={lead.fb_found}><FbBadge v={lead.fb_found} /></Cell>
+              <Cell id={`${i}-cont`} textToCopy={lead.contacted}><ContactedBadge v={lead.contacted} /></Cell>
+              <Cell id={`${i}-rep`} textToCopy={lead.reply}><ReplyBadge v={lead.reply} /></Cell>
               <Cell id={`${i}-notes`} textToCopy={lead.notes} style={{ maxWidth: '160px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: '#555', fontSize: '12px' }} title={lead.notes}>
                 {lead.notes || '—'}
               </Cell>
               {customColumns.map(c => (
                 <Cell id={`${i}-${c.column_name}`} key={c.id} textToCopy={lead[c.column_name]}>
-                  {c.data_type === 'Yes/No' && lead[c.column_name] ? (
+                  {c.data_type === 'Yes/No' ? (
                     <YesNo v={lead[c.column_name]} />
                   ) : (
                     <span style={{ color: '#ededed', fontSize: '13px', whiteSpace: 'nowrap' }}>{lead[c.column_name] || '—'}</span>

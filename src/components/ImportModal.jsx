@@ -106,7 +106,8 @@ export default function ImportModal({ file, activeProject, customColumns = [], o
       mappedHeaders.forEach((h, colIdx) => {
         if (!selectedCols.has(colIdx)) return
         if (h.mapped) {
-          newRow[h.mapped] = row[colIdx]?.toString() || ''
+          const val = row[colIdx]?.toString().trim()
+          newRow[h.mapped] = !val ? null : val
         }
       })
       if (Object.keys(newRow).length > 1) {
@@ -150,7 +151,7 @@ export default function ImportModal({ file, activeProject, customColumns = [], o
               <div className="table-wrap" style={{ flex: 1, overflow: 'auto' }}>
                 <table>
                   <tbody>
-                    {rawRows.slice(0, 50).map((row, i) => (
+                    {rawRows.map((row, i) => (
                       <tr key={i} style={{ background: i === headerRowIdx ? 'rgba(62,207,142,0.1)' : 'transparent' }}>
                         <td style={{ width: '40px', textAlign: 'center' }}>
                           <input type="radio" checked={i === headerRowIdx} onChange={() => setHeaderRowIdx(i)} style={{ accentColor: '#3ecf8e', cursor: 'pointer' }} />
@@ -165,8 +166,7 @@ export default function ImportModal({ file, activeProject, customColumns = [], o
                     ))}
                   </tbody>
                 </table>
-              </div>
-              {rawRows.length > 50 && <div style={{ fontSize: '11px', color: '#555', textAlign: 'center' }}>Showing first 50 rows</div>}
+
             </>
           ) : (
             <>
@@ -187,10 +187,10 @@ export default function ImportModal({ file, activeProject, customColumns = [], o
                 <table>
                   <thead>
                     <tr>
-                      <th style={{ width: '40px', position: 'sticky', top: 0, zIndex: 10 }}></th>
-                      <th style={{ width: '40px', position: 'sticky', top: 0, zIndex: 10 }}>#</th>
+                      <th style={{ width: '40px', position: 'sticky', top: 0, zIndex: 10, background: '#1a1a1a' }}></th>
+                      <th style={{ width: '40px', position: 'sticky', top: 0, zIndex: 10, background: '#1a1a1a' }}>#</th>
                       {mappedHeaders.map((h, i) => (
-                        <th key={i} style={{ position: 'sticky', top: 0, zIndex: 10 }}>
+                        <th key={i} style={{ position: 'sticky', top: 0, zIndex: 10, background: '#1a1a1a' }}>
                           <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', opacity: selectedCols.has(i) ? 1 : 0.5 }}>
                             <input type="checkbox" checked={selectedCols.has(i)} onChange={() => toggleCol(i)} style={{ accentColor: '#3ecf8e' }} />
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
@@ -207,7 +207,7 @@ export default function ImportModal({ file, activeProject, customColumns = [], o
                     </tr>
                   </thead>
                   <tbody>
-                    {dataRows.slice(0, 100).map((row, i) => (
+                    {dataRows.map((row, i) => (
                       <tr key={i} style={{ opacity: selectedRows.has(i) ? 1 : 0.4 }}>
                         <td style={{ textAlign: 'center' }}>
                           <input type="checkbox" checked={selectedRows.has(i)} onChange={() => toggleRow(i)} style={{ accentColor: '#3ecf8e', cursor: 'pointer' }} />
@@ -222,8 +222,7 @@ export default function ImportModal({ file, activeProject, customColumns = [], o
                     ))}
                   </tbody>
                 </table>
-              </div>
-              {dataRows.length > 100 && <div style={{ fontSize: '11px', color: '#555', textAlign: 'center' }}>Showing first 100 rows preview</div>}
+
             </>
           )}
         </div>
