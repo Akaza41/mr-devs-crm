@@ -298,9 +298,12 @@ export default function Dashboard({ role, onLogout }) {
           activeProject={activeProject}
           customColumns={customColumns} 
           onClose={() => setImportFile(null)} 
-          onSuccess={async (count) => {
+          onSuccess={async (count, skipped = 0) => {
             setImportFile(null)
-            showToast(`${count} leads imported successfully`)
+            const msg = skipped > 0 
+              ? `${count} imported, ${skipped} skipped as duplicates`
+              : `${count} leads imported successfully`
+            showToast(msg)
             await fetchLeads()
           }} 
         />

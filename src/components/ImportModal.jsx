@@ -149,13 +149,24 @@ export default function ImportModal({ file, activeProject, customColumns = [], o
       return
     }
 
-    const { error } = await supabase.from('leads').insert(rowsToInsert)
+    // Final strict cleaning step as requested
+    const cleanedRows = rowsToInsert.map(row => {
+      // Destructure to remove 'id' and '#' just in case they slipped through
+      const { id, '#': rowNum, ...cleanRow } = row
+      return cleanRow
+    })
+
+    if (cleanedRows.length > 0) {
+      console.log('Sample cleaned row before insert:', cleanedRows[0])
+    }
+
+    const { error } = await supabase.from('leads').insert(cleanedRows)
     if (error) {
       alert('Error importing leads: ' + error.message)
       setLoading(false)
       return
     }
-    onSuccess(rowsToInsert.length, skipped)
+    onSuccess(cleanedRows.length, skipped)
   }
 
   return (
