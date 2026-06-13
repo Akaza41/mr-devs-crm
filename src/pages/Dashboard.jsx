@@ -6,8 +6,15 @@ import LeadsTable from '../components/LeadsTable'
 import LeadModal from '../components/LeadModal'
 import ColManager from '../components/ColManager'
 import ImportModal from '../components/ImportModal'
+import ProjectSelector from '../components/ProjectSelector'
+import ProjectModal from '../components/ProjectModal'
 
 export default function Dashboard({ role, onLogout }) {
+  const [projects, setProjects] = useState([])
+  const [activeProject, setActiveProject] = useState(null)
+  const [projectModalOpen, setProjectModalOpen] = useState(false)
+  const [editingProject, setEditingProject] = useState(null)
+
   const [leads, setLeads] = useState([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
@@ -27,9 +34,31 @@ export default function Dashboard({ role, onLogout }) {
   const leadsRef = useRef([])
 
   useEffect(() => { 
-    fetchLeads() 
     fetchCustomColumns()
+    fetchProjects()
   }, [])
+
+  const fetchProjects = async () => {
+    setLoading(true)
+    const { data } = await supabase.from('projects').select('*').order('created_at', { ascending: true })
+    if (data && data.length > 0) {
+      setProjects(data)
+      const lastId = localStorage.getItem('mrdevs_last_project')
+      const active = data.find(p => p.id === lastId) || data[0]
+      setActiveProject(active)
+    } else {
+      setProjects([])
+      setActiveProject(null)
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    if (activeProject) {
+      localStorage.setItem('mrdevs_last_project', activeProject.id)
+      fetchLeads()
+    }
+  }, [activeProject])
 
   const fetchCustomColumns = async () => {
     const { data } = await supabase.from('custom_columns').select('*').order('created_at', { ascending: true })
@@ -42,6 +71,24 @@ export default function Dashboard({ role, onLogout }) {
       setImportFile(file)
       e.target.value = ''
     }
+  }
+
+  const fetchLeads = async () => {
+    if (!activeProject) return
+    setLoading(true)
+    const { data, error } = await supabase.from('leads').select('*').eq('project_id', activeProject.id)
+    if (!error) {
+      const order = { High: 0, Medium: 1, Low: 2 }
+      const sorted = data.sort((a, b) => {
+        if (order[a.priority] !== order[b.priority]) return order[a.priority] - order[b.priority]
+        return (b.rating || 0) - (a.rating || 0)
+      })
+      setLeads(sorted)
+      leadsRef.current = sorted
+      historyRef.current = []
+      futureRef.current = []
+    }
+    setLoading(false)
   }
 
   useEffect(() => {
@@ -60,23 +107,6 @@ export default function Dashboard({ role, onLogout }) {
   const showToast = (msg) => {
     setToast(msg)
     setTimeout(() => setToast(''), 2500)
-  }
-
-  const fetchLeads = async () => {
-    setLoading(true)
-    const { data, error } = await supabase.from('leads').select('*')
-    if (!error) {
-      const order = { High: 0, Medium: 1, Low: 2 }
-      const sorted = data.sort((a, b) => {
-        if (order[a.priority] !== order[b.priority]) return order[a.priority] - order[b.priority]
-        return (b.rating || 0) - (a.rating || 0)
-      })
-      setLeads(sorted)
-      leadsRef.current = sorted
-      historyRef.current = []
-      futureRef.current = []
-    }
-    setLoading(false)
   }
 
   const updateLeads = (newLeads) => {
@@ -110,9 +140,10 @@ export default function Dashboard({ role, onLogout }) {
   }
 
   const syncToSupabase = async (newLeads) => {
-    await supabase.from('leads').delete().neq('hospital_name', '')
+    if (!activeProject) return
+    await supabase.from('leads').delete().eq('project_id', activeProject.id)
     if (newLeads.length > 0) {
-      await supabase.from('leads').insert(newLeads.map(({ id, ...rest }) => rest))
+      await supabase.from('leads').insert(newLeads.map(({ id, ...rest }) => ({ ...rest, project_id: activeProject.id })))
     }
   }
 
@@ -126,15 +157,16 @@ export default function Dashboard({ role, onLogout }) {
   })
 
   const handleSave = async (form) => {
+    if (!activeProject) return
     pushHistory()
     const updatedLeads = editingLead
       ? leadsRef.current.map(l => l.hospital_name === editingLead.hospital_name ? { ...l, ...form } : l)
-      : [...leadsRef.current, form]
+      : [...leadsRef.current, { ...form, project_id: activeProject.id }]
     updateLeads(updatedLeads)
     if (editingLead) {
-      await supabase.from('leads').update(form).eq('hospital_name', editingLead.hospital_name)
+      await supabase.from('leads').update(form).eq('hospital_name', editingLead.hospital_name).eq('project_id', activeProject.id)
     } else {
-      await supabase.from('leads').insert([form])
+      await supabase.from('leads').insert([{ ...form, project_id: activeProject.id }])
     }
     setModalOpen(false)
     showToast(editingLead ? 'Lead updated' : 'Lead added')
@@ -145,8 +177,40 @@ export default function Dashboard({ role, onLogout }) {
     pushHistory()
     const updatedLeads = leadsRef.current.filter(l => l.hospital_name !== lead.hospital_name)
     updateLeads(updatedLeads)
-    await supabase.from('leads').delete().eq('hospital_name', lead.hospital_name)
+    await supabase.from('leads').delete().eq('hospital_name', lead.hospital_name).eq('project_id', activeProject.id)
     showToast('Lead deleted')
+  }
+
+  const handleSaveProject = async (form) => {
+    if (editingProject) {
+      const { data, error } = await supabase.from('projects').update(form).eq('id', editingProject.id).select().single()
+      if (!error && data) {
+        setProjects(projects.map(p => p.id === data.id ? data : p))
+        if (activeProject?.id === data.id) setActiveProject(data)
+        showToast('Project updated')
+      }
+    } else {
+      const { data, error } = await supabase.from('projects').insert([form]).select().single()
+      if (!error && data) {
+        setProjects([...projects, data])
+        setActiveProject(data)
+        showToast('Project created')
+      }
+    }
+    setProjectModalOpen(false)
+  }
+
+  const handleDeleteProject = async (project) => {
+    if (!confirm(`Are you sure you want to delete the project "${project.name}" and all its leads?`)) return
+    const { error } = await supabase.from('projects').delete().eq('id', project.id)
+    if (!error) {
+      const remaining = projects.filter(p => p.id !== project.id)
+      setProjects(remaining)
+      if (activeProject?.id === project.id) {
+        setActiveProject(remaining.length > 0 ? remaining[0] : null)
+      }
+      showToast('Project deleted')
+    }
   }
 
   return (
@@ -159,17 +223,25 @@ export default function Dashboard({ role, onLogout }) {
       )}
 
       <div className="topbar">
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+        <div style={{ display: 'flex', alignItems: 'center' }}>
           <span style={{ fontSize: '15px', fontWeight: '600', color: '#ededed', letterSpacing: '-0.5px' }}>
             MR<span style={{ color: '#3ecf8e' }}>.</span>DEVS
           </span>
-          <span style={{ fontSize: '12px', color: '#555' }}>Lead CRM</span>
+          <ProjectSelector 
+            role={role}
+            projects={projects}
+            activeProject={activeProject}
+            onChangeProject={setActiveProject}
+            onEditProject={(p) => { setEditingProject(p); setProjectModalOpen(true) }}
+            onDeleteProject={handleDeleteProject}
+            onNewProject={() => { setEditingProject(null); setProjectModalOpen(true) }}
+          />
           {role === 'viewer' && (
-            <span className="badge badge-gray" style={{ marginLeft: '4px' }}>👁️ View Only</span>
+            <span className="badge badge-gray" style={{ marginLeft: '12px' }}>👁️ View Only</span>
           )}
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-          {role !== 'viewer' && (
+          {role !== 'viewer' && projects.length > 0 && (
             <>
               <button onClick={undo} style={{ background: 'none', border: '0.5px solid #2a2a2a', borderRadius: '6px', color: '#a0a0a0', cursor: 'pointer', padding: '5px 10px', fontSize: '13px' }}>
                 ↩ Undo
@@ -179,36 +251,51 @@ export default function Dashboard({ role, onLogout }) {
               </button>
             </>
           )}
-          <span style={{ fontSize: '12px', color: '#555' }}>{filteredLeads.length} leads</span>
+          {projects.length > 0 && (
+            <span style={{ fontSize: '12px', color: '#555' }}>{filteredLeads.length} leads</span>
+          )}
           <button onClick={onLogout} style={{ background: 'none', border: 'none', color: '#a0a0a0', cursor: 'pointer', fontSize: '13px' }}>Sign out</button>
         </div>
       </div>
 
-      <div style={{ padding: '24px' }}>
-        <StatsBar leads={leads} />
-        <Toolbar
-          role={role}
-          search={search} setSearch={setSearch}
-          filterPriority={filterPriority} setFilterPriority={setFilterPriority}
-          filterContacted={filterContacted} setFilterContacted={setFilterContacted}
-          filterNumber={filterNumber} setFilterNumber={setFilterNumber}
-          onAddLead={() => { setEditingLead(null); setModalOpen(true) }}
-          onManageColumns={() => setColManagerOpen(true)}
-          onImportClick={() => fileInputRef?.current?.click()}
-        />
-        <input type="file" accept=".xlsx,.csv" ref={fileInputRef} style={{ display: 'none' }} onChange={handleFileChange} />
-        {loading ? (
-          <div style={{ textAlign: 'center', padding: '60px', color: '#555', fontSize: '13px' }}>Loading leads...</div>
-        ) : (
-          <LeadsTable role={role} leads={filteredLeads} customColumns={customColumns} onEdit={l => { setEditingLead(l); setModalOpen(true) }} onDelete={handleDelete} />
-        )}
-      </div>
+      {projects.length === 0 ? (
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: 'calc(100vh - 56px)', gap: '16px' }}>
+          <div style={{ fontSize: '18px', color: '#ededed', fontWeight: '500' }}>Create your first project to get started</div>
+          {role !== 'viewer' ? (
+            <button className="btn-primary" onClick={() => { setEditingProject(null); setProjectModalOpen(true) }}>+ New Project</button>
+          ) : (
+            <div style={{ color: '#555', fontSize: '13px' }}>No projects exist yet. Ask an admin to create one.</div>
+          )}
+        </div>
+      ) : (
+        <div style={{ padding: '24px' }}>
+          <StatsBar leads={leads} />
+          <Toolbar
+            role={role}
+            search={search} setSearch={setSearch}
+            filterPriority={filterPriority} setFilterPriority={setFilterPriority}
+            filterContacted={filterContacted} setFilterContacted={setFilterContacted}
+            filterNumber={filterNumber} setFilterNumber={setFilterNumber}
+            onAddLead={() => { setEditingLead(null); setModalOpen(true) }}
+            onManageColumns={() => setColManagerOpen(true)}
+            onImportClick={() => fileInputRef?.current?.click()}
+          />
+          <input type="file" accept=".xlsx,.csv" ref={fileInputRef} style={{ display: 'none' }} onChange={handleFileChange} />
+          {loading ? (
+            <div style={{ textAlign: 'center', padding: '60px', color: '#555', fontSize: '13px' }}>Loading leads...</div>
+          ) : (
+            <LeadsTable role={role} leads={filteredLeads} customColumns={customColumns} onEdit={l => { setEditingLead(l); setModalOpen(true) }} onDelete={handleDelete} />
+          )}
+        </div>
+      )}
 
       {modalOpen && <LeadModal lead={editingLead} customColumns={customColumns} onClose={() => setModalOpen(false)} onSave={handleSave} />}
       {colManagerOpen && <ColManager onClose={() => setColManagerOpen(false)} onCustomColumnsChange={setCustomColumns} />}
-      {importFile && (
+      {projectModalOpen && <ProjectModal project={editingProject} onClose={() => setProjectModalOpen(false)} onSave={handleSaveProject} />}
+      {importFile && activeProject && (
         <ImportModal 
           file={importFile} 
+          activeProject={activeProject}
           customColumns={customColumns} 
           onClose={() => setImportFile(null)} 
           onSuccess={async (count) => {

@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import * as xlsx from 'xlsx'
 import { supabase } from '../lib/supabase'
 
-export default function ImportModal({ file, customColumns = [], onClose, onSuccess }) {
+export default function ImportModal({ file, activeProject, customColumns = [], onClose, onSuccess }) {
   const [loading, setLoading] = useState(true)
   const [parsedData, setParsedData] = useState([])
   const [mappedHeaders, setMappedHeaders] = useState([])
@@ -61,10 +61,11 @@ export default function ImportModal({ file, customColumns = [], onClose, onSucce
   }, [file])
 
   const handleConfirm = async () => {
-    if (parsedData.length === 0) return
+    if (parsedData.length === 0 || !activeProject) return
     setLoading(true)
     
-    const { error } = await supabase.from('leads').insert(parsedData)
+    const rowsToInsert = parsedData.map(r => ({ ...r, project_id: activeProject.id }))
+    const { error } = await supabase.from('leads').insert(rowsToInsert)
     if (error) {
       alert('Error importing leads: ' + error.message)
       setLoading(false)
