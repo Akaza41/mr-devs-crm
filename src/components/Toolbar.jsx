@@ -1,4 +1,4 @@
-export default function Toolbar({ role, search, setSearch, filterPriority, setFilterPriority, filterContacted, setFilterContacted, filterNumber, setFilterNumber, onAddLead, onManageColumns }) {
+export default function Toolbar({ role, search, setSearch, filterPriority, setFilterPriority, filterContacted, setFilterContacted, filterNumber, setFilterNumber, onAddLead, onManageColumns, onImportClick }) {
   return (
     <div style={{ display: 'flex', gap: '10px', marginBottom: '16px', flexWrap: 'wrap', alignItems: 'center' }}>
       <div style={{ position: 'relative', flex: 1, minWidth: '200px' }}>
@@ -27,6 +27,7 @@ export default function Toolbar({ role, search, setSearch, filterPriority, setFi
       </select>
       {role !== 'viewer' && (
         <>
+          <button className="btn-ghost" onClick={onImportClick}>📂 Import</button>
           <button className="btn-ghost" onClick={onManageColumns}>⚙️ Columns</button>
           <button className="btn-primary" onClick={onAddLead}>+ Add Lead</button>
         </>

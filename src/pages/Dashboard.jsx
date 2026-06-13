@@ -5,6 +5,7 @@ import Toolbar from '../components/Toolbar'
 import LeadsTable from '../components/LeadsTable'
 import LeadModal from '../components/LeadModal'
 import ColManager from '../components/ColManager'
+import ImportModal from '../components/ImportModal'
 
 export default function Dashboard({ role, onLogout }) {
   const [leads, setLeads] = useState([])
@@ -15,10 +16,12 @@ export default function Dashboard({ role, onLogout }) {
   const [filterNumber, setFilterNumber] = useState('')
   const [modalOpen, setModalOpen] = useState(false)
   const [colManagerOpen, setColManagerOpen] = useState(false)
+  const [importFile, setImportFile] = useState(null)
   const [customColumns, setCustomColumns] = useState([])
   const [editingLead, setEditingLead] = useState(null)
   const [toast, setToast] = useState('')
 
+  const fileInputRef = useRef(null)
   const historyRef = useRef([])
   const futureRef = useRef([])
   const leadsRef = useRef([])
@@ -31,6 +34,14 @@ export default function Dashboard({ role, onLogout }) {
   const fetchCustomColumns = async () => {
     const { data } = await supabase.from('custom_columns').select('*').order('created_at', { ascending: true })
     if (data) setCustomColumns(data)
+  }
+
+  const handleFileChange = (e) => {
+    const file = e.target.files[0]
+    if (file) {
+      setImportFile(file)
+      e.target.value = ''
+    }
   }
 
   useEffect(() => {
@@ -183,7 +194,9 @@ export default function Dashboard({ role, onLogout }) {
           filterNumber={filterNumber} setFilterNumber={setFilterNumber}
           onAddLead={() => { setEditingLead(null); setModalOpen(true) }}
           onManageColumns={() => setColManagerOpen(true)}
+          onImportClick={() => fileInputRef?.current?.click()}
         />
+        <input type="file" accept=".xlsx,.csv" ref={fileInputRef} style={{ display: 'none' }} onChange={handleFileChange} />
         {loading ? (
           <div style={{ textAlign: 'center', padding: '60px', color: '#555', fontSize: '13px' }}>Loading leads...</div>
         ) : (
@@ -193,6 +206,18 @@ export default function Dashboard({ role, onLogout }) {
 
       {modalOpen && <LeadModal lead={editingLead} customColumns={customColumns} onClose={() => setModalOpen(false)} onSave={handleSave} />}
       {colManagerOpen && <ColManager onClose={() => setColManagerOpen(false)} onCustomColumnsChange={setCustomColumns} />}
+      {importFile && (
+        <ImportModal 
+          file={importFile} 
+          customColumns={customColumns} 
+          onClose={() => setImportFile(null)} 
+          onSuccess={async (count) => {
+            setImportFile(null)
+            showToast(`${count} leads imported successfully`)
+            await fetchLeads()
+          }} 
+        />
+      )}
     </div>
   )
 }
