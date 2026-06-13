@@ -16,8 +16,17 @@ const FIELDS = [
   { key: 'notes', label: 'Notes', type: 'textarea', full: true },
 ]
 
-export default function LeadModal({ lead, onClose, onSave }) {
+export default function LeadModal({ lead, customColumns = [], onClose, onSave }) {
   const [form, setForm] = useState({})
+
+  const dynamicFields = customColumns.map(c => ({
+    key: c.column_name,
+    label: c.display_name,
+    type: c.data_type === 'Yes/No' ? 'select' : c.data_type === 'Number' ? 'number' : c.data_type === 'Date' ? 'date' : 'text',
+    options: c.data_type === 'Yes/No' ? ['', 'Yes', 'No'] : undefined
+  }))
+
+  const allFields = [...FIELDS, ...dynamicFields]
 
   useEffect(() => {
     setForm(lead || { has_website: 'No', priority: 'High', fb_found: 'No', contacted: 'No', reply: '' })
@@ -36,7 +45,7 @@ export default function LeadModal({ lead, onClose, onSave }) {
           <button onClick={onClose} style={{ background: 'none', border: 'none', color: '#555', cursor: 'pointer', fontSize: '18px', lineHeight: 1 }}>×</button>
         </div>
         <div className="modal-body">
-          {FIELDS.map(f => (
+          {allFields.map(f => (
             <div key={f.key} className={`form-group ${f.full ? 'col-span-2' : ''}`}>
               <label>{f.label}</label>
               {f.type === 'textarea' ? (

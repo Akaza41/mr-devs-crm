@@ -4,6 +4,7 @@ import StatsBar from '../components/StatsBar'
 import Toolbar from '../components/Toolbar'
 import LeadsTable from '../components/LeadsTable'
 import LeadModal from '../components/LeadModal'
+import ColManager from '../components/ColManager'
 
 export default function Dashboard({ onLogout }) {
   const [leads, setLeads] = useState([])
@@ -13,6 +14,8 @@ export default function Dashboard({ onLogout }) {
   const [filterContacted, setFilterContacted] = useState('')
   const [filterNumber, setFilterNumber] = useState('')
   const [modalOpen, setModalOpen] = useState(false)
+  const [colManagerOpen, setColManagerOpen] = useState(false)
+  const [customColumns, setCustomColumns] = useState([])
   const [editingLead, setEditingLead] = useState(null)
   const [toast, setToast] = useState('')
 
@@ -20,7 +23,15 @@ export default function Dashboard({ onLogout }) {
   const futureRef = useRef([])
   const leadsRef = useRef([])
 
-  useEffect(() => { fetchLeads() }, [])
+  useEffect(() => { 
+    fetchLeads() 
+    fetchCustomColumns()
+  }, [])
+
+  const fetchCustomColumns = async () => {
+    const { data } = await supabase.from('custom_columns').select('*').order('created_at', { ascending: true })
+    if (data) setCustomColumns(data)
+  }
 
   useEffect(() => {
     leadsRef.current = leads
@@ -163,15 +174,17 @@ export default function Dashboard({ onLogout }) {
           filterContacted={filterContacted} setFilterContacted={setFilterContacted}
           filterNumber={filterNumber} setFilterNumber={setFilterNumber}
           onAddLead={() => { setEditingLead(null); setModalOpen(true) }}
+          onManageColumns={() => setColManagerOpen(true)}
         />
         {loading ? (
           <div style={{ textAlign: 'center', padding: '60px', color: '#555', fontSize: '13px' }}>Loading leads...</div>
         ) : (
-          <LeadsTable leads={filteredLeads} onEdit={l => { setEditingLead(l); setModalOpen(true) }} onDelete={handleDelete} />
+          <LeadsTable leads={filteredLeads} customColumns={customColumns} onEdit={l => { setEditingLead(l); setModalOpen(true) }} onDelete={handleDelete} />
         )}
       </div>
 
-      {modalOpen && <LeadModal lead={editingLead} onClose={() => setModalOpen(false)} onSave={handleSave} />}
+      {modalOpen && <LeadModal lead={editingLead} customColumns={customColumns} onClose={() => setModalOpen(false)} onSave={handleSave} />}
+      {colManagerOpen && <ColManager onClose={() => setColManagerOpen(false)} onCustomColumnsChange={setCustomColumns} />}
     </div>
   )
 }

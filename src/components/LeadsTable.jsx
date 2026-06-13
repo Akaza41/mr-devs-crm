@@ -29,7 +29,7 @@ function NumberBadge({ v }) {
   return <Badge text="No Number" type="red" />
 }
 
-export default function LeadsTable({ leads, onEdit, onDelete }) {
+export default function LeadsTable({ leads, customColumns = [], onEdit, onDelete }) {
   if (!leads.length) {
     return (
       <div style={{ textAlign: 'center', padding: '60px', color: '#555', fontSize: '13px' }}>
@@ -43,8 +43,8 @@ export default function LeadsTable({ leads, onEdit, onDelete }) {
       <table>
         <thead>
           <tr>
-            {['#', 'Hospital Name', 'Type', 'Rating', 'Phone', 'Number', 'Website', 'Priority', 'FB', 'Contacted', 'Reply', 'Notes', ''].map(h => (
-              <th key={h}>{h}</th>
+            {['#', 'Hospital Name', 'Type', 'Rating', 'Phone', 'Number', 'Website', 'Priority', 'FB', 'Contacted', 'Reply', 'Notes', ...customColumns.map(c => c.display_name), ''].map((h, i) => (
+              <th key={i}>{h}</th>
             ))}
           </tr>
         </thead>
@@ -81,6 +81,15 @@ export default function LeadsTable({ leads, onEdit, onDelete }) {
               <td style={{ maxWidth: '160px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: '#555', fontSize: '12px' }} title={lead.notes}>
                 {lead.notes || '—'}
               </td>
+              {customColumns.map(c => (
+                <td key={c.id}>
+                  {c.data_type === 'Yes/No' && lead[c.column_name] ? (
+                    <YesNo v={lead[c.column_name]} />
+                  ) : (
+                    <span style={{ color: '#ededed', fontSize: '13px', whiteSpace: 'nowrap' }}>{lead[c.column_name] || '—'}</span>
+                  )}
+                </td>
+              ))}
               <td>
                 <div style={{ display: 'flex', gap: '12px', opacity: '0' }} className="actions">
                   <button onClick={() => onEdit(lead)} style={{ background: 'none', border: 'none', color: '#a0a0a0', cursor: 'pointer', fontSize: '12px', padding: '0' }}>Edit</button>
