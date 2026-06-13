@@ -140,9 +140,9 @@ export default function ImportModal({ file, activeProject, customColumns = [], o
       return
     }
 
-    // Check for duplicate phones OR hospital_names against existing leads in this project
-    // Since hospital_name is the primary key, we MUST prevent duplicates on it to avoid leads_pkey errors
-    const { data: existingLeads } = await supabase.from('leads').select('phone, hospital_name').eq('project_id', activeProject.id)
+    // Check for duplicate phones OR hospital_names globally (across all projects)
+    // Since hospital_name or phone might be the primary key, we MUST prevent duplicates table-wide to avoid leads_pkey errors
+    const { data: existingLeads } = await supabase.from('leads').select('phone, hospital_name')
     const existingPhones = new Set((existingLeads || []).map(l => l.phone?.trim()).filter(Boolean))
     const existingNames = new Set((existingLeads || []).map(l => l.hospital_name?.trim().toLowerCase()).filter(Boolean))
 
