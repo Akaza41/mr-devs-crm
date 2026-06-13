@@ -1,6 +1,7 @@
 import { useState } from 'react'
 
 const USERS = { raqeeb: 'raqeeb123', mubeen: 'mubeenAhmi123', mrdevs: 'mrdevs123' }
+export const VIEWER_CREDENTIALS = { username: 'View', password: 'view1122' }
 
 export default function Login({ onLogin }) {
   const [username, setUsername] = useState('')
@@ -9,10 +10,18 @@ export default function Login({ onLogin }) {
 
   const handleLogin = () => {
     if (USERS[username] && USERS[username] === password) {
-      onLogin()
+      onLogin('admin')
+    } else if (username === VIEWER_CREDENTIALS.username && password === VIEWER_CREDENTIALS.password) {
+      onLogin('viewer')
     } else {
       setError('Wrong username or password')
     }
+  }
+
+  const handleViewerLogin = () => {
+    setUsername(VIEWER_CREDENTIALS.username)
+    setPassword(VIEWER_CREDENTIALS.password)
+    onLogin('viewer')
   }
 
   return (
@@ -46,6 +55,14 @@ export default function Login({ onLogin }) {
           {error && <p style={{ color: '#f87171', fontSize: '12px' }}>{error}</p>}
           <button className="btn-primary" onClick={handleLogin} style={{ marginTop: '4px' }}>
             Sign in
+          </button>
+          <div style={{ display: 'flex', alignItems: 'center', margin: '8px 0' }}>
+            <div style={{ flex: 1, height: '0.5px', background: '#2a2a2a' }}></div>
+            <span style={{ fontSize: '11px', color: '#555', margin: '0 10px', textTransform: 'uppercase' }}>or</span>
+            <div style={{ flex: 1, height: '0.5px', background: '#2a2a2a' }}></div>
+          </div>
+          <button className="btn-ghost" onClick={handleViewerLogin}>
+            Login as Viewer
           </button>
         </div>
 

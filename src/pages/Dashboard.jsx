@@ -6,7 +6,7 @@ import LeadsTable from '../components/LeadsTable'
 import LeadModal from '../components/LeadModal'
 import ColManager from '../components/ColManager'
 
-export default function Dashboard({ onLogout }) {
+export default function Dashboard({ role, onLogout }) {
   const [leads, setLeads] = useState([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
@@ -153,14 +153,21 @@ export default function Dashboard({ onLogout }) {
             MR<span style={{ color: '#3ecf8e' }}>.</span>DEVS
           </span>
           <span style={{ fontSize: '12px', color: '#555' }}>Lead CRM</span>
+          {role === 'viewer' && (
+            <span className="badge badge-gray" style={{ marginLeft: '4px' }}>👁️ View Only</span>
+          )}
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-          <button onClick={undo} style={{ background: 'none', border: '0.5px solid #2a2a2a', borderRadius: '6px', color: '#a0a0a0', cursor: 'pointer', padding: '5px 10px', fontSize: '13px' }}>
-            ↩ Undo
-          </button>
-          <button onClick={redo} style={{ background: 'none', border: '0.5px solid #2a2a2a', borderRadius: '6px', color: '#a0a0a0', cursor: 'pointer', padding: '5px 10px', fontSize: '13px' }}>
-            ↪ Redo
-          </button>
+          {role !== 'viewer' && (
+            <>
+              <button onClick={undo} style={{ background: 'none', border: '0.5px solid #2a2a2a', borderRadius: '6px', color: '#a0a0a0', cursor: 'pointer', padding: '5px 10px', fontSize: '13px' }}>
+                ↩ Undo
+              </button>
+              <button onClick={redo} style={{ background: 'none', border: '0.5px solid #2a2a2a', borderRadius: '6px', color: '#a0a0a0', cursor: 'pointer', padding: '5px 10px', fontSize: '13px' }}>
+                ↪ Redo
+              </button>
+            </>
+          )}
           <span style={{ fontSize: '12px', color: '#555' }}>{filteredLeads.length} leads</span>
           <button onClick={onLogout} style={{ background: 'none', border: 'none', color: '#a0a0a0', cursor: 'pointer', fontSize: '13px' }}>Sign out</button>
         </div>
@@ -169,6 +176,7 @@ export default function Dashboard({ onLogout }) {
       <div style={{ padding: '24px' }}>
         <StatsBar leads={leads} />
         <Toolbar
+          role={role}
           search={search} setSearch={setSearch}
           filterPriority={filterPriority} setFilterPriority={setFilterPriority}
           filterContacted={filterContacted} setFilterContacted={setFilterContacted}
@@ -179,7 +187,7 @@ export default function Dashboard({ onLogout }) {
         {loading ? (
           <div style={{ textAlign: 'center', padding: '60px', color: '#555', fontSize: '13px' }}>Loading leads...</div>
         ) : (
-          <LeadsTable leads={filteredLeads} customColumns={customColumns} onEdit={l => { setEditingLead(l); setModalOpen(true) }} onDelete={handleDelete} />
+          <LeadsTable role={role} leads={filteredLeads} customColumns={customColumns} onEdit={l => { setEditingLead(l); setModalOpen(true) }} onDelete={handleDelete} />
         )}
       </div>
 
