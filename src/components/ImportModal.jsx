@@ -140,14 +140,11 @@ export default function ImportModal({ file, activeProject, customColumns = [], o
       return
     }
 
-    // Check for duplicate phones globally (across all projects)
-    const { data: existingLeads } = await supabase.from('leads').select('phone')
-    const existingPhones = new Set((existingLeads || []).map(l => l.phone?.trim()).filter(Boolean))
-
+    // We have removed all deduplication so every single valid row is imported.
     const rowsToInsert = []
     let skipped = 0
+
     for (const row of rawInsertRows) {
-      const p = row.phone?.trim()
       const n = row.hospital_name?.trim().toLowerCase()
       
       // Since hospital_name is still required (not-null constraint), skip rows that are completely missing it
@@ -156,12 +153,7 @@ export default function ImportModal({ file, activeProject, customColumns = [], o
         continue
       }
       
-      if (p && existingPhones.has(p)) {
-        skipped++
-      } else {
-        rowsToInsert.push(row)
-        if (p) existingPhones.add(p)
-      }
+      rowsToInsert.push(row)
     }
 
     if (rowsToInsert.length === 0) {

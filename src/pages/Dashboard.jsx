@@ -301,7 +301,7 @@ export default function Dashboard({ role, onLogout }) {
           onSuccess={async (count, skipped = 0) => {
             setImportFile(null)
             const msg = skipped > 0 
-              ? `${count} imported, ${skipped} skipped as duplicates`
+              ? `${count} imported, ${skipped} skipped (missing hospital name)`
               : `${count} leads imported successfully`
             showToast(msg)
             await fetchLeads()
