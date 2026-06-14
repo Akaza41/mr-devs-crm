@@ -29,6 +29,46 @@ export default function ImportModal({ file, activeProject, customColumns = [], o
     if (trimmed === '#') return null
     const norm = trimmed.toLowerCase().replace(/[^a-z0-9]/g, '_').replace(/_+/g, '_').replace(/^_|_$/g, '')
     if (blocklist.includes(norm)) return null
+
+    // Explicit aliases — maps common Excel column names to DB fields
+    const aliases = {
+      'business_name': 'hospital_name',
+      'clinic_name': 'hospital_name',
+      'hospital': 'hospital_name',
+      'name': 'hospital_name',
+      'facility_name': 'hospital_name',
+      'lead_name': 'hospital_name',
+      'organization': 'hospital_name',
+      'company': 'hospital_name',
+      'company_name': 'hospital_name',
+      'place_name': 'hospital_name',
+      'website': 'has_website',
+      'has_web': 'has_website',
+      'web': 'has_website',
+      'facebook': 'fb_found',
+      'fb': 'fb_found',
+      'facebook_link': 'fb_found',
+      'fb_link': 'fb_found',
+      'fb_page': 'fb_found',
+      'contact': 'contacted',
+      'mob': 'phone',
+      'mobile': 'phone',
+      'mobile_no': 'phone',
+      'phone_no': 'phone',
+      'contact_no': 'phone',
+      'cell': 'phone',
+      'num': 'number_type',
+      'number': 'number_type',
+      'note': 'notes',
+      'remark': 'notes',
+      'remarks': 'notes',
+      'stars': 'rating',
+      'google_rating': 'rating',
+      'addr': 'address',
+      'location': 'address',
+    }
+
+    if (aliases[norm]) return aliases[norm]
     if (dbCols.includes(norm)) return norm
     const found = dbCols.find(c => c.includes(norm) || norm.includes(c))
     return found || null
