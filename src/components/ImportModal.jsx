@@ -17,7 +17,7 @@ export default function ImportModal({ file, activeProject, customColumns = [], o
   const [selectedRows, setSelectedRows] = useState(new Set())
   const [selectedCols, setSelectedCols] = useState(new Set())
 
-  const dbCols = ['hospital_name', 'address', 'type', 'rating', 'phone', 'number_type', 'has_website', 'priority', 'fb_found', 'contacted', 'reply', 'notes', ...customColumns.map(c => c.column_name)]
+  const dbCols = ['hospital_name', 'address', 'type', 'rating', 'reviews', 'phone', 'number_type', 'has_website', 'priority', 'fb_found', 'contacted', 'reply', 'notes', ...customColumns.map(c => c.column_name)]
 
   // Column names that should NEVER be mapped — these are row IDs / serial numbers from Excel
   const blocklist = ['id', 'no', 'sr', 'sr_no', 'sno', 's_no', 'serial', 'serial_no', 'row', 'row_no', 'index', 'sl', 'sl_no', 'project_id', '#']
@@ -232,7 +232,7 @@ export default function ImportModal({ file, activeProject, customColumns = [], o
 
     // SAFE LIST of allowed DB columns — only these can ever be inserted
     const allowedColumns = new Set([
-      'hospital_name', 'address', 'type', 'rating', 'phone', 'number_type',
+      'hospital_name', 'address', 'type', 'rating', 'reviews', 'phone', 'number_type',
       'has_website', 'priority', 'fb_found', 'contacted', 'reply', 'notes',
       'project_id',
       ...customColumns.map(c => c.column_name)

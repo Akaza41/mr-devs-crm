@@ -91,7 +91,7 @@ export default function LeadsTable({ role, leads, customColumns = [], onEdit, on
       <table>
         <thead style={{ background: '#1a1a1a' }}>
           <tr>
-            {['#', 'Hospital Name', 'Type', 'Rating', 'Phone', 'Number', 'Website', 'Priority', 'FB', 'Contacted', 'Reply', 'Notes', ...customColumns.map(c => c.display_name), role !== 'viewer' ? '' : null].filter(h => h !== null).map((h, i) => (
+            {['#', 'Hospital Name', 'Type', 'Rating', 'Reviews', 'Phone', 'Number', 'Website', 'Priority', 'FB', 'Contacted', 'Reply', 'Notes', ...customColumns.map(c => c.display_name), role !== 'viewer' ? '' : null].filter(h => h !== null).map((h, i) => (
               <th key={i} style={{ padding: '10px 16px', color: '#ededed', fontWeight: '500' }}>{h}</th>
             ))}
           </tr>
@@ -114,6 +114,9 @@ export default function LeadsTable({ role, leads, customColumns = [], onEdit, on
               <Cell id={`${i}-rating`} textToCopy={lead.rating?.toString()}>
                 <span style={{ color: '#facc15' }}>★</span>
                 <span style={{ marginLeft: '4px' }}>{lead.rating || '—'}</span>
+              </Cell>
+              <Cell id={`${i}-reviews`} textToCopy={lead.reviews?.toString()} style={{ color: '#a0a0a0' }}>
+                {lead.reviews || '—'}
               </Cell>
               <Cell id={`${i}-phone`} textToCopy={lead.phone} style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: '12px', color: '#a0a0a0', whiteSpace: 'nowrap' }}>
                 {lead.phone || '—'}
