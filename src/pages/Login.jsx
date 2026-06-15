@@ -1,7 +1,7 @@
 import { useState } from 'react'
 
 const USERS = { raqeeb: 'raqeeb123', mubeen: 'mubeenAhmi123', mrdevs: 'mrdevs123' }
-export const VIEWER_CREDENTIALS = { username: 'View', password: 'view1122' }
+const VIEWER_CREDENTIALS = { username: 'View', password: 'view1122' }
 
 export default function Login({ onLogin }) {
   const [username, setUsername] = useState('')

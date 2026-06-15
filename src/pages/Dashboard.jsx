@@ -38,7 +38,7 @@ export default function Dashboard({ role, onLogout }) {
     fetchProjects()
   }, [])
 
-  const fetchProjects = async () => {
+  async function fetchProjects() {
     setLoading(true)
     const { data } = await supabase.from('projects').select('*').order('created_at', { ascending: true })
     if (data && data.length > 0) {
@@ -58,14 +58,15 @@ export default function Dashboard({ role, onLogout }) {
       localStorage.setItem('mrdevs_last_project', activeProject.id)
       fetchLeads()
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeProject])
 
-  const fetchCustomColumns = async () => {
+  async function fetchCustomColumns() {
     const { data } = await supabase.from('custom_columns').select('*').order('created_at', { ascending: true })
     if (data) setCustomColumns(data)
   }
 
-  const handleFileChange = (e) => {
+  function handleFileChange(e) {
     const file = e.target.files[0]
     if (file) {
       setImportFile(file)
@@ -73,7 +74,7 @@ export default function Dashboard({ role, onLogout }) {
     }
   }
 
-  const fetchLeads = async () => {
+  async function fetchLeads() {
     if (!activeProject) return
     setLoading(true)
     const { data, error } = await supabase.from('leads').select('*').eq('project_id', activeProject.id)
@@ -95,14 +96,7 @@ export default function Dashboard({ role, onLogout }) {
     leadsRef.current = leads
   }, [leads])
 
-  useEffect(() => {
-    const handleKey = (e) => {
-      if ((e.ctrlKey || e.metaKey) && e.key === 'z') { e.preventDefault(); undo() }
-      if ((e.ctrlKey || e.metaKey) && e.key === 'y') { e.preventDefault(); redo() }
-    }
-    window.addEventListener('keydown', handleKey)
-    return () => window.removeEventListener('keydown', handleKey)
-  }, [])
+
 
   const showToast = (msg) => {
     setToast(msg)
@@ -119,7 +113,7 @@ export default function Dashboard({ role, onLogout }) {
     futureRef.current = []
   }
 
-  const undo = async () => {
+  async function undo() {
     if (historyRef.current.length === 0) { showToast('Nothing to undo'); return }
     const prev = historyRef.current[historyRef.current.length - 1]
     futureRef.current = [leadsRef.current, ...futureRef.current]
@@ -129,7 +123,7 @@ export default function Dashboard({ role, onLogout }) {
     showToast('Undo done')
   }
 
-  const redo = async () => {
+  async function redo() {
     if (futureRef.current.length === 0) { showToast('Nothing to redo'); return }
     const next = futureRef.current[0]
     historyRef.current = [...historyRef.current, leadsRef.current]
@@ -139,11 +133,25 @@ export default function Dashboard({ role, onLogout }) {
     showToast('Redo done')
   }
 
-  const syncToSupabase = async (newLeads) => {
+  useEffect(() => {
+    const handleKey = (e) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'z') { e.preventDefault(); undo() }
+      if ((e.ctrlKey || e.metaKey) && e.key === 'y') { e.preventDefault(); redo() }
+    }
+    window.addEventListener('keydown', handleKey)
+    return () => window.removeEventListener('keydown', handleKey)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  async function syncToSupabase(newLeads) {
     if (!activeProject) return
     await supabase.from('leads').delete().eq('project_id', activeProject.id)
     if (newLeads.length > 0) {
-      await supabase.from('leads').insert(newLeads.map(({ id, ...rest }) => ({ ...rest, project_id: activeProject.id })))
+      await supabase.from('leads').insert(newLeads.map(lead => {
+        const rest = { ...lead }
+        delete rest.id
+        return { ...rest, project_id: activeProject.id }
+      }))
     }
   }
 
@@ -297,6 +305,7 @@ export default function Dashboard({ role, onLogout }) {
           file={importFile} 
           activeProject={activeProject}
           customColumns={customColumns} 
+          onRefreshCustomColumns={fetchCustomColumns}
           onClose={() => setImportFile(null)} 
           onSuccess={async (count, skipped = 0) => {
             setImportFile(null)

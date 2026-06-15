@@ -1,11 +1,12 @@
 import { useState, useEffect } from 'react'
 
 export default function ProjectModal({ project, onClose, onSave }) {
-  const [name, setName] = useState('')
-  const [description, setDescription] = useState('')
+  const [name, setName] = useState(() => project ? project.name || '' : '')
+  const [description, setDescription] = useState(() => project ? project.description || '' : '')
 
   useEffect(() => {
     if (project) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setName(project.name || '')
       setDescription(project.description || '')
     }

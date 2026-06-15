@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import * as xlsx from 'xlsx'
 import { supabase } from '../lib/supabase'
 
-export default function ImportModal({ file, activeProject, customColumns = [], onClose, onSuccess }) {
+export default function ImportModal({ file, activeProject, customColumns = [], onRefreshCustomColumns, onClose, onSuccess }) {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [step, setStep] = useState(1)
@@ -116,7 +116,7 @@ export default function ImportModal({ file, activeProject, customColumns = [], o
     setDataRows(data)
 
     const allRows = new Set(data.map((_, i) => i))
-    const allCols = new Set(mapped.map((_, i) => i).filter(i => mapped[i].mapped))
+    const allCols = new Set(mapped.map((_, i) => i))
     setSelectedRows(allRows)
     setSelectedCols(allCols)
 
@@ -137,10 +137,99 @@ export default function ImportModal({ file, activeProject, customColumns = [], o
     setSelectedCols(newSet)
   }
 
+  const handleMapChange = (colIdx, value) => {
+    const newVal = value || null
+    const updated = [...mappedHeaders]
+    updated[colIdx] = { ...updated[colIdx], mapped: newVal }
+    setMappedHeaders(updated)
+
+    const newSelectedCols = new Set(selectedCols)
+    if (newVal) {
+      newSelectedCols.add(colIdx)
+    } else {
+      newSelectedCols.delete(colIdx)
+    }
+    setSelectedCols(newSelectedCols)
+  }
+
+  const handleCreateCustomColumn = async () => {
+    const colName = prompt('Enter a name for the new custom column:')
+    if (!colName || !colName.trim()) return
+
+    const key = colName.toLowerCase().replace(/[^a-z0-9]/g, '_')
+    const allDbCols = ['hospital_name', 'address', 'type', 'rating', 'phone', 'number_type', 'has_website', 'priority', 'fb_found', 'contacted', 'reply', 'notes', ...customColumns.map(c => c.column_name)]
+    if (allDbCols.includes(key)) {
+      alert('A column with this name already exists.')
+      return
+    }
+
+    const colType = prompt('Enter column type (text, number, date, boolean) [default: text]:', 'text')
+    const finalType = colType?.trim().toLowerCase() || 'text'
+    
+    let pgType = 'text'
+    let mappedType = 'Text'
+    if (finalType === 'number' || finalType === 'numeric') {
+      pgType = 'numeric'
+      mappedType = 'Number'
+    } else if (finalType === 'date') {
+      pgType = 'date'
+      mappedType = 'Date'
+    } else if (finalType === 'boolean' || finalType === 'yes/no') {
+      pgType = 'text'
+      mappedType = 'Yes/No'
+    }
+
+    setLoading(true)
+    try {
+      const { error: rpcError } = await supabase.rpc('add_custom_column', {
+        col_name: key,
+        col_type: pgType
+      })
+      if (rpcError) {
+        alert('Error adding column to database: ' + rpcError.message)
+        setLoading(false)
+        return
+      }
+
+      const newCol = {
+        column_name: key,
+        display_name: colName.trim(),
+        data_type: mappedType
+      }
+      
+      const { data, error } = await supabase.from('custom_columns').insert([newCol]).select().single()
+      if (error) {
+        alert('Error saving custom column metadata: ' + error.message)
+      } else if (data && onRefreshCustomColumns) {
+        await onRefreshCustomColumns()
+      }
+    } catch (err) {
+      alert('An unexpected error occurred: ' + err.message)
+    } finally {
+      setLoading(false)
+    }
+  }
+
   const handleConfirm = async () => {
     if (selectedRows.size === 0 || selectedCols.size === 0 || !activeProject) return
     setLoading(true)
     
+    // Check if there are any checked columns that are unmapped
+    const unmappedCheckedCols = []
+    mappedHeaders.forEach((h, idx) => {
+      if (selectedCols.has(idx) && !h.mapped) {
+        unmappedCheckedCols.push(h.original)
+      }
+    })
+
+    if (unmappedCheckedCols.length > 0) {
+      alert(`The following columns are selected for import but remain Unmapped:\n\n` + 
+            unmappedCheckedCols.map(c => `• ${c}`).join('\n') + 
+            `\n\nPlease choose a database column mapping for them, or uncheck them before continuing.`)
+      setLoading(false)
+      return
+    }
+
     // SAFE LIST of allowed DB columns — only these can ever be inserted
     const allowedColumns = new Set([
       'hospital_name', 'address', 'type', 'rating', 'phone', 'number_type',
@@ -255,12 +344,14 @@ export default function ImportModal({ file, activeProject, customColumns = [], o
           ) : (
             <>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
-                <div style={{ display: 'flex', gap: '10px' }}>
+                <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
                   <button className="btn-ghost" onClick={() => setSelectedRows(new Set(dataRows.map((_, i) => i)))}>Select All Rows</button>
                   <button className="btn-ghost" onClick={() => setSelectedRows(new Set())}>Deselect All Rows</button>
-                  <div style={{ width: '1px', background: '#333', margin: '0 5px' }} />
+                  <div style={{ width: '1px', background: '#333', margin: '0 5px', alignSelf: 'stretch' }} />
                   <button className="btn-ghost" onClick={() => setSelectedCols(new Set(mappedHeaders.map((_, i) => i)))}>Select All Columns</button>
                   <button className="btn-ghost" onClick={() => setSelectedCols(new Set())}>Deselect All Columns</button>
+                  <div style={{ width: '1px', background: '#333', margin: '0 5px', alignSelf: 'stretch' }} />
+                  <button className="btn-ghost" onClick={handleCreateCustomColumn} style={{ color: '#3ecf8e' }}>➕ Add Custom Column</button>
                 </div>
                 <div style={{ fontSize: '13px', color: '#ededed' }}>
                   Importing <strong style={{ color: '#3ecf8e' }}>{selectedRows.size}</strong> rows and <strong style={{ color: '#3ecf8e' }}>{selectedCols.size}</strong> columns
@@ -274,18 +365,47 @@ export default function ImportModal({ file, activeProject, customColumns = [], o
                       <th style={{ width: '40px', position: 'sticky', top: 0, zIndex: 10, background: '#1a1a1a' }}></th>
                       <th style={{ width: '40px', position: 'sticky', top: 0, zIndex: 10, background: '#1a1a1a' }}>#</th>
                       {mappedHeaders.map((h, i) => (
-                        <th key={i} style={{ position: 'sticky', top: 0, zIndex: 10, background: '#1a1a1a' }}>
-                          <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', opacity: selectedCols.has(i) ? 1 : 0.5 }}>
-                            <input type="checkbox" checked={selectedCols.has(i)} onChange={() => toggleCol(i)} style={{ accentColor: '#3ecf8e' }} />
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                              <span>{h.original}</span>
-                              {h.mapped ? (
-                                <span style={{ fontSize: '10px', color: '#3ecf8e', fontWeight: 'normal' }}>→ {h.mapped}</span>
-                              ) : (
-                                <span style={{ fontSize: '10px', color: '#f87171', fontWeight: 'normal' }}>Unmapped</span>
-                              )}
+                        <th key={i} style={{ position: 'sticky', top: 0, zIndex: 10, background: '#1a1a1a', minWidth: '150px' }}>
+                          <div style={{ display: 'flex', alignItems: 'flex-start', gap: '6px', opacity: selectedCols.has(i) ? 1 : 0.5 }}>
+                            <input 
+                              type="checkbox" 
+                              checked={selectedCols.has(i)} 
+                              onChange={() => toggleCol(i)} 
+                              style={{ accentColor: '#3ecf8e', cursor: 'pointer', marginTop: '4px' }} 
+                            />
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', alignItems: 'flex-start', width: '100%' }}>
+                              <span style={{ fontSize: '12px', fontWeight: '500', color: '#ededed', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '120px' }} title={h.original}>
+                                {h.original}
+                              </span>
+                              <select
+                                value={h.mapped || ''}
+                                onChange={(e) => handleMapChange(i, e.target.value)}
+                                style={{
+                                  fontSize: '11px',
+                                  background: '#141414',
+                                  border: '0.5px solid #333',
+                                  borderRadius: '4px',
+                                  color: h.mapped ? '#3ecf8e' : '#f87171',
+                                  padding: '4px 6px',
+                                  cursor: 'pointer',
+                                  outline: 'none',
+                                  width: '100%',
+                                  maxWidth: '130px'
+                                }}
+                              >
+                                <option value="" style={{ color: '#f87171' }}>⚠️ Unmapped</option>
+                                {dbCols.map(col => {
+                                  const custom = customColumns.find(c => c.column_name === col);
+                                  const label = custom ? `${custom.display_name} (Custom)` : col.replace(/_/g, ' ');
+                                  return (
+                                    <option key={col} value={col} style={{ color: '#ededed' }}>
+                                      {label}
+                                    </option>
+                                  );
+                                })}
+                              </select>
                             </div>
-                          </label>
+                          </div>
                         </th>
                       ))}
                     </tr>

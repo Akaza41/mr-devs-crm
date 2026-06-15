@@ -29,6 +29,7 @@ export default function LeadModal({ lead, customColumns = [], onClose, onSave })
   const allFields = [...FIELDS, ...dynamicFields]
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setForm(lead || { has_website: 'No', priority: 'High', fb_found: 'No', contacted: 'No', reply: '' })
   }, [lead])
 

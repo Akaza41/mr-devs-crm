@@ -1,15 +1,14 @@
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import Login from './pages/Login'
 import Dashboard from './pages/Dashboard'
 
 export default function App() {
-  const [role, setRole] = useState(null)
-
-  useEffect(() => {
+  const [role, setRole] = useState(() => {
     const auth = localStorage.getItem('mrdevs_auth')
-    if (auth === '1' || auth === 'admin') setRole('admin')
-    else if (auth === 'viewer') setRole('viewer')
-  }, [])
+    if (auth === '1' || auth === 'admin') return 'admin'
+    if (auth === 'viewer') return 'viewer'
+    return null
+  })
 
   const handleLogin = (newRole = 'admin') => {
     localStorage.setItem('mrdevs_auth', newRole)

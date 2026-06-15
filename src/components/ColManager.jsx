@@ -7,14 +7,15 @@ export default function ColManager({ onClose, onCustomColumnsChange }) {
   const [newColType, setNewColType] = useState('Text')
   const [loading, setLoading] = useState(false)
 
-  useEffect(() => {
-    fetchColumns()
-  }, [])
-
-  const fetchColumns = async () => {
+  async function fetchColumns() {
     const { data } = await supabase.from('custom_columns').select('*').order('created_at', { ascending: true })
     if (data) setColumns(data)
   }
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    fetchColumns()
+  }, [])
 
   const handleAdd = async () => {
     if (!newColName.trim()) return
