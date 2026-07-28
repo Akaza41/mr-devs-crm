@@ -247,6 +247,18 @@ export default function ImportModal({ file, activeProject, customColumns = [], o
       return 'No'
     }
 
+    // ── NORMALIZATION: Extract clean numeric value for rating
+    // Prevents DB coercion errors if Excel has "4.2 stars" or "4/5" instead of just 4.2
+    const parseRating = (val) => {
+      if (!val) return null
+      const match = val.toString().match(/[0-9.]+/)
+      if (match) {
+        const num = parseFloat(match[0])
+        return isNaN(num) ? null : num
+      }
+      return null
+    }
+
     const rawInsertRows = []
     dataRows.forEach((row, rowIdx) => {
       if (!selectedRows.has(rowIdx)) return
@@ -258,11 +270,15 @@ export default function ImportModal({ file, activeProject, customColumns = [], o
         if (h.mapped && allowedColumns.has(h.mapped)) {
           let val = row[colIdx]?.toString().trim()
           
-          if (val && (h.mapped === 'has_website' || h.mapped === 'fb_found')) {
-            val = normalizeYesNo(val)
+          if (val) {
+            if (h.mapped === 'has_website' || h.mapped === 'fb_found') {
+              val = normalizeYesNo(val)
+            } else if (h.mapped === 'rating') {
+              val = parseRating(val)
+            }
           }
 
-          newRow[h.mapped] = !val || val === '' ? null : val
+          newRow[h.mapped] = val === null || val === undefined || val === '' ? null : val
         }
       })
 
