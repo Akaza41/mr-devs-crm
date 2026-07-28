@@ -307,12 +307,14 @@ export default function Dashboard({ role, onLogout }) {
           customColumns={customColumns} 
           onRefreshCustomColumns={fetchCustomColumns}
           onClose={() => setImportFile(null)} 
-          onSuccess={async (count, skipped = 0) => {
+          onSuccess={async (count, skipped = 0, duplicates = 0) => {
             setImportFile(null)
-            const msg = skipped > 0 
-              ? `${count} imported, ${skipped} skipped (missing hospital name)`
-              : `${count} leads imported successfully`
-            showToast(msg)
+            // Always start with the imported count, then append each skip reason only if non-zero.
+            // This means the toast only mentions what actually happened (e.g. no "0 duplicates" noise).
+            const parts = [`${count} imported`]
+            if (skipped > 0) parts.push(`${skipped} skipped (missing name)`)
+            if (duplicates > 0) parts.push(`${duplicates} skipped (duplicates)`)
+            showToast(parts.join(', '))
             await fetchLeads()
           }} 
         />

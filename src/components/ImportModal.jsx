@@ -269,28 +269,89 @@ export default function ImportModal({ file, activeProject, customColumns = [], o
       return
     }
 
-    // We have removed all deduplication so every single valid row is imported.
+    // ── DUPLICATE DETECTION: prefetch existing leads for this project ──────────
+    // Fetch only hospital_name and phone — the two fields used to fingerprint a lead.
+    // Scoped to activeProject.id so leads in other projects are never treated as duplicates.
+    const { data: existingLeads, error: fetchError } = await supabase
+      .from('leads')
+      .select('hospital_name, phone')
+      .eq('project_id', activeProject.id)
+
+    if (fetchError) {
+      // If the prefetch fails we bail out rather than silently inserting without checking.
+      alert('Error checking for duplicates: ' + fetchError.message)
+      setLoading(false)
+      return
+    }
+
+    // existingFingerprints: Set of "name||phone" strings for leads that HAVE a phone.
+    // Used when the incoming row also has a phone — matches the exact name+phone pair.
+    const existingFingerprints = new Set()
+
+    // existingNames: Set of just the name for every existing lead, regardless of phone.
+    // Used as a fallback when the incoming row has NO phone — matches by name alone,
+    // because a phoneless row with a matching name is almost certainly the same lead.
+    const existingNames = new Set()
+
+    for (const lead of existingLeads) {
+      const name = lead.hospital_name?.trim().toLowerCase() || ''
+      const phone = lead.phone?.trim().toLowerCase() || ''
+      if (name) {
+        // Always add to the name-only set — covers the no-phone fallback for incoming rows.
+        existingNames.add(name)
+        // Add the full fingerprint only for leads that have a phone.
+        if (phone) existingFingerprints.add(`${name}||${phone}`)
+      }
+    }
+    // ── END DUPLICATE DETECTION SETUP ──────────────────────────────────────────
+
     const rowsToInsert = []
+    // skipped: rows dropped because hospital_name is blank (original behavior, unchanged).
     let skipped = 0
+    // duplicates: rows dropped because they already exist in this project (new behavior).
+    let duplicates = 0
 
     for (const row of rawInsertRows) {
       const n = row.hospital_name?.trim().toLowerCase()
-      
-      // Since hospital_name is still required (not-null constraint), skip rows that are completely missing it
+
+      // Since hospital_name is still required (not-null constraint), skip rows that are completely missing it.
       if (!n) {
         skipped++
         continue
       }
-      
+
+      // ── DUPLICATE CHECK ────────────────────────────────────────────────────
+      // Normalize the incoming phone so comparisons are case/space insensitive.
+      const incomingPhone = row.phone?.trim().toLowerCase() || ''
+
+      let isDuplicate
+      if (incomingPhone) {
+        // Incoming row HAS a phone: check the combined name+phone fingerprint.
+        // Two leads with the same name but different phone numbers are NOT duplicates.
+        isDuplicate = existingFingerprints.has(`${n}||${incomingPhone}`)
+      } else {
+        // Incoming row has NO phone: fall back to name-only check.
+        // A phoneless row with a matching name is treated as the same lead.
+        isDuplicate = existingNames.has(n)
+      }
+
+      if (isDuplicate) {
+        // Count it and skip — we report the total to the user at the end.
+        duplicates++
+        continue
+      }
+      // ── END DUPLICATE CHECK ────────────────────────────────────────────────
+
       rowsToInsert.push(row)
     }
 
     if (rowsToInsert.length === 0) {
-      onSuccess(0, skipped)
+      // Nothing to insert — report both skip counts so the user sees what happened.
+      onSuccess(0, skipped, duplicates)
       return
     }
 
-    // Log sample to verify no id field
+    // Log sample to verify no id field (unchanged from original).
     console.log('Sample row before insert (should have NO id field):', JSON.stringify(rowsToInsert[0]))
     console.log('Keys in row:', Object.keys(rowsToInsert[0]))
 
@@ -300,7 +361,8 @@ export default function ImportModal({ file, activeProject, customColumns = [], o
       setLoading(false)
       return
     }
-    onSuccess(rowsToInsert.length, skipped)
+    // Pass both skip counts to the success handler so the toast can show each reason.
+    onSuccess(rowsToInsert.length, skipped, duplicates)
   }
 
   return (
