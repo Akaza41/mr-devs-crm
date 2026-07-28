@@ -238,6 +238,15 @@ export default function ImportModal({ file, activeProject, customColumns = [], o
       ...customColumns.map(c => c.column_name)
     ])
 
+    // ── NORMALIZATION: Convert boolean-like Excel values to canonical "Yes" / "No"
+    // Ensures values like "TRUE", "1", "yes", "y" are standardized for the UI badges
+    const normalizeYesNo = (val) => {
+      if (!val) return 'No'
+      const v = val.toString().trim().toLowerCase()
+      if (['yes', 'true', '1', 'y'].includes(v)) return 'Yes'
+      return 'No'
+    }
+
     const rawInsertRows = []
     dataRows.forEach((row, rowIdx) => {
       if (!selectedRows.has(rowIdx)) return
@@ -247,7 +256,12 @@ export default function ImportModal({ file, activeProject, customColumns = [], o
         if (!selectedCols.has(colIdx)) return
         // Only insert if mapped AND in the allowed list — never insert 'id'
         if (h.mapped && allowedColumns.has(h.mapped)) {
-          const val = row[colIdx]?.toString().trim()
+          let val = row[colIdx]?.toString().trim()
+          
+          if (val && (h.mapped === 'has_website' || h.mapped === 'fb_found')) {
+            val = normalizeYesNo(val)
+          }
+
           newRow[h.mapped] = !val || val === '' ? null : val
         }
       })
