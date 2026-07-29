@@ -385,14 +385,30 @@ export default function ImportModal({ file, activeProject, customColumns = [], o
     console.log('Sample row before insert (should have NO id field):', JSON.stringify(rowsToInsert[0]))
     console.log('Keys in row:', Object.keys(rowsToInsert[0]))
 
-    const { error } = await supabase.from('leads').insert(rowsToInsert)
-    if (error) {
-      alert('Error importing leads: ' + error.message)
-      setLoading(false)
-      return
+    // ── CHUNKING: Split the insert into smaller batches to avoid Supabase limits ──
+    // Inserting thousands of rows in a single request can exceed payload size limits.
+    // We break the rows into chunks of 200 and insert them sequentially.
+    const CHUNK_SIZE = 200
+    let insertedCount = 0
+
+    for (let i = 0; i < rowsToInsert.length; i += CHUNK_SIZE) {
+      const chunk = rowsToInsert.slice(i, i + CHUNK_SIZE)
+      const { error } = await supabase.from('leads').insert(chunk)
+      
+      if (error) {
+        alert(`Error importing leads (stopped at row ${insertedCount}): ${error.message}`)
+        setLoading(false)
+        // If some chunks succeeded before this failure, we still report what we managed to insert
+        if (insertedCount > 0) {
+          onSuccess(insertedCount, skipped, duplicates)
+        }
+        return
+      }
+      insertedCount += chunk.length
     }
+
     // Pass both skip counts to the success handler so the toast can show each reason.
-    onSuccess(rowsToInsert.length, skipped, duplicates)
+    onSuccess(insertedCount, skipped, duplicates)
   }
 
   return (
