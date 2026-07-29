@@ -108,28 +108,52 @@ export default function Dashboard({ role, onLogout }) {
     leadsRef.current = newLeads
   }
 
-  const pushHistory = () => {
-    historyRef.current = [...historyRef.current, [...leadsRef.current]]
+  const pushHistory = (action) => {
+    historyRef.current = [...historyRef.current, action]
     futureRef.current = []
   }
 
   async function undo() {
     if (historyRef.current.length === 0) { showToast('Nothing to undo'); return }
-    const prev = historyRef.current[historyRef.current.length - 1]
-    futureRef.current = [leadsRef.current, ...futureRef.current]
+    const action = historyRef.current[historyRef.current.length - 1]
+    
+    futureRef.current = [action, ...futureRef.current]
     historyRef.current = historyRef.current.slice(0, -1)
-    updateLeads(prev)
-    await syncToSupabase(prev)
+
+    // ── Apply the reverse action locally and to Supabase ──
+    if (action.type === 'ADD') {
+      updateLeads(leadsRef.current.filter(l => l.id !== action.lead.id))
+      await supabase.from('leads').delete().eq('id', action.lead.id)
+    } else if (action.type === 'DELETE') {
+      updateLeads([...leadsRef.current, action.lead])
+      await supabase.from('leads').insert([action.lead]) // preserves original id
+    } else if (action.type === 'UPDATE') {
+      updateLeads(leadsRef.current.map(l => l.id === action.id ? action.before : l))
+      await supabase.from('leads').update(action.before).eq('id', action.id)
+    }
+    
     showToast('Undo done')
   }
 
   async function redo() {
     if (futureRef.current.length === 0) { showToast('Nothing to redo'); return }
-    const next = futureRef.current[0]
-    historyRef.current = [...historyRef.current, leadsRef.current]
+    const action = futureRef.current[0]
+    
+    historyRef.current = [...historyRef.current, action]
     futureRef.current = futureRef.current.slice(1)
-    updateLeads(next)
-    await syncToSupabase(next)
+
+    // ── Re-apply the action locally and to Supabase ──
+    if (action.type === 'ADD') {
+      updateLeads([...leadsRef.current, action.lead])
+      await supabase.from('leads').insert([action.lead])
+    } else if (action.type === 'DELETE') {
+      updateLeads(leadsRef.current.filter(l => l.id !== action.lead.id))
+      await supabase.from('leads').delete().eq('id', action.lead.id)
+    } else if (action.type === 'UPDATE') {
+      updateLeads(leadsRef.current.map(l => l.id === action.id ? action.after : l))
+      await supabase.from('leads').update(action.after).eq('id', action.id)
+    }
+
     showToast('Redo done')
   }
 
@@ -143,18 +167,6 @@ export default function Dashboard({ role, onLogout }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  async function syncToSupabase(newLeads) {
-    if (!activeProject) return
-    await supabase.from('leads').delete().eq('project_id', activeProject.id)
-    if (newLeads.length > 0) {
-      await supabase.from('leads').insert(newLeads.map(lead => {
-        const rest = { ...lead }
-        delete rest.id
-        return { ...rest, project_id: activeProject.id }
-      }))
-    }
-  }
-
   const filteredLeads = leads.filter(l => {
     const q = search.toLowerCase()
     const matchSearch = !q || (l.hospital_name || '').toLowerCase().includes(q) || (l.phone || '').toLowerCase().includes(q) || (l.notes || '').toLowerCase().includes(q)
@@ -166,23 +178,40 @@ export default function Dashboard({ role, onLogout }) {
 
   const handleSave = async (form) => {
     if (!activeProject) return
-    pushHistory()
-    const updatedLeads = editingLead
-      ? leadsRef.current.map(l => l.id === editingLead.id ? { ...l, ...form } : l)
-      : [...leadsRef.current, { ...form, project_id: activeProject.id }]
-    updateLeads(updatedLeads)
+    
     if (editingLead) {
+      // ── Action-based history: Track the UPDATE ──
+      const before = { ...editingLead }
+      const after = { ...editingLead, ...form }
+      pushHistory({ type: 'UPDATE', id: editingLead.id, before, after })
+      
+      const updatedLeads = leadsRef.current.map(l => l.id === editingLead.id ? after : l)
+      updateLeads(updatedLeads)
       await supabase.from('leads').update(form).eq('id', editingLead.id)
+      showToast('Lead updated')
     } else {
-      await supabase.from('leads').insert([{ ...form, project_id: activeProject.id }])
+      // ── Action-based history: Track the ADD ──
+      // We must insert first to capture the DB-generated ID before pushing to history
+      const { data, error } = await supabase.from('leads').insert([{ ...form, project_id: activeProject.id }]).select().single()
+      if (error) {
+        showToast('Error adding lead')
+        return
+      }
+      
+      pushHistory({ type: 'ADD', lead: data })
+      const updatedLeads = [...leadsRef.current, data]
+      updateLeads(updatedLeads)
+      showToast('Lead added')
     }
     setModalOpen(false)
-    showToast(editingLead ? 'Lead updated' : 'Lead added')
   }
 
   const handleDelete = async (lead) => {
     if (!confirm(`Delete ${lead.hospital_name}?`)) return
-    pushHistory()
+    
+    // ── Action-based history: Track the DELETE ──
+    pushHistory({ type: 'DELETE', lead })
+    
     const updatedLeads = leadsRef.current.filter(l => l.id !== lead.id)
     updateLeads(updatedLeads)
     await supabase.from('leads').delete().eq('id', lead.id)
