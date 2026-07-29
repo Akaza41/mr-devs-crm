@@ -1,6 +1,7 @@
 import { useState } from 'react'
 
 export default function TeamInviteModal({ onClose, onSuccess }) {
+  const [fullName, setFullName] = useState('')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [role, setRole] = useState('viewer')
@@ -29,6 +30,17 @@ export default function TeamInviteModal({ onClose, onSuccess }) {
         
         <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '12px', padding: '24px' }}>
           
+          <div className="form-group">
+            <label>Full Name</label>
+            <input 
+              type="text" 
+              className="input-base" 
+              placeholder="e.g. John Doe" 
+              value={fullName} 
+              onChange={e => setFullName(e.target.value)} 
+            />
+          </div>
+
           <div className="form-group">
             <label>Email Address</label>
             <input 

@@ -9,6 +9,7 @@ import ImportModal from '../components/ImportModal'
 import ProjectSelector from '../components/ProjectSelector'
 import ProjectModal from '../components/ProjectModal'
 import TeamPage from '../components/TeamPage'
+import EmployeeProfilePage from './EmployeeProfilePage'
 
 export default function Dashboard({ role, onLogout }) {
   const [projects, setProjects] = useState([])
@@ -16,6 +17,7 @@ export default function Dashboard({ role, onLogout }) {
   const [projectModalOpen, setProjectModalOpen] = useState(false)
   const [editingProject, setEditingProject] = useState(null)
   const [currentView, setCurrentView] = useState('leads')
+  const [selectedUserId, setSelectedUserId] = useState(null)
 
   const [leads, setLeads] = useState([])
   const [loading, setLoading] = useState(true)
@@ -330,9 +332,19 @@ export default function Dashboard({ role, onLogout }) {
                 <LeadsTable role={role} leads={filteredLeads} customColumns={customColumns} onEdit={l => { setEditingLead(l); setModalOpen(true) }} onDelete={handleDelete} />
               )}
             </>
-          ) : (
-            <TeamPage />
-          )}
+          ) : currentView === 'team' ? (
+            <TeamPage 
+              onViewProfile={(id) => {
+                setSelectedUserId(id)
+                setCurrentView('employee_profile')
+              }} 
+            />
+          ) : currentView === 'employee_profile' && selectedUserId ? (
+            <EmployeeProfilePage 
+              userId={selectedUserId} 
+              onBack={() => setCurrentView('team')} 
+            />
+          ) : null}
         </div>
       )}
 
