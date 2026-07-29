@@ -1,6 +1,9 @@
 import { useState, useEffect } from 'react'
 import * as xlsx from 'xlsx'
 import { supabase } from '../lib/supabase'
+// ── Activity Logging ──
+import { logActivity } from '../lib/activityLogger'
+import { ACTIONS } from '../lib/activityActions'
 
 export default function ImportModal({ file, activeProject, customColumns = [], onRefreshCustomColumns, onClose, onSuccess }) {
   const [loading, setLoading] = useState(true)
@@ -409,6 +412,23 @@ export default function ImportModal({ file, activeProject, customColumns = [], o
 
     // Pass both skip counts to the success handler so the toast can show each reason.
     onSuccess(insertedCount, skipped, duplicates)
+
+    // ── Log the completed import event (fire-and-forget, never blocks UI) ──
+    // Only fires if at least one row was actually inserted.
+    if (insertedCount > 0) {
+      logActivity({
+        action: ACTIONS.LEAD_IMPORTED,
+        entityType: 'lead',
+        projectId: activeProject.id,
+        metadata: {
+          file_name: file.name,
+          total_rows: rawInsertRows.length,
+          inserted: insertedCount,
+          skipped,
+          duplicates,
+        },
+      })
+    }
   }
 
   return (

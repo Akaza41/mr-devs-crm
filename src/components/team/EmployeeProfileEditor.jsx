@@ -1,4 +1,8 @@
 import React, { useState, useEffect } from 'react'
+// ── Activity Logging ──
+import { logActivity } from '../../lib/activityLogger'
+import { ACTIONS } from '../../lib/activityActions'
+
 
 // ── EMPLOYEE PROFILE EDITOR ──
 // Form allowing admins to edit an employee's details.
@@ -21,7 +25,33 @@ export default function EmployeeProfileEditor({ member, onSave, isCurrentUser })
         return
       }
     }
+
+    // ── Detect if role specifically changed so we can fire ROLE_CHANGED in addition to PROFILE_UPDATED ──
+    const roleChanged = role !== member.role
+    
     onSave({ full_name: fullName, role })
+
+    // ── Log profile update (fire-and-forget, never blocks UI) ──
+    logActivity({
+      action: ACTIONS.PROFILE_UPDATED,
+      entityType: 'profile',
+      entityId: member.id,
+      metadata: { full_name: fullName },
+    })
+
+    // ── Log role change as a separate event for cleaner audit trail ──
+    if (roleChanged) {
+      logActivity({
+        action: ACTIONS.ROLE_CHANGED,
+        entityType: 'profile',
+        entityId: member.id,
+        metadata: {
+          target_email: member.email,
+          old_role: member.role,
+          new_role: role,
+        },
+      })
+    }
   }
 
   return (

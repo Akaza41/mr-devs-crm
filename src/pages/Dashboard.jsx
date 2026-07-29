@@ -10,6 +10,11 @@ import ProjectSelector from '../components/ProjectSelector'
 import ProjectModal from '../components/ProjectModal'
 import TeamPage from '../components/TeamPage'
 import EmployeeProfilePage from './EmployeeProfilePage'
+// ── Activity Logging ──
+// Import the logger and action constants to record business events without
+// scattering raw insert logic across multiple components.
+import { logActivity } from '../lib/activityLogger'
+import { ACTIONS } from '../lib/activityActions'
 
 export default function Dashboard({ role, onLogout }) {
   const [projects, setProjects] = useState([])
@@ -193,6 +198,15 @@ export default function Dashboard({ role, onLogout }) {
       updateLeads(updatedLeads)
       await supabase.from('leads').update(form).eq('id', editingLead.id)
       showToast('Lead updated')
+
+      // ── Log the update event (fire-and-forget, never blocks UI) ──
+      logActivity({
+        action: ACTIONS.LEAD_UPDATED,
+        entityType: 'lead',
+        entityId: editingLead.id,
+        projectId: activeProject.id,
+        metadata: { lead_name: form.hospital_name || editingLead.hospital_name },
+      })
     } else {
       // ── Action-based history: Track the ADD ──
       // We must insert first to capture the DB-generated ID before pushing to history
@@ -206,6 +220,15 @@ export default function Dashboard({ role, onLogout }) {
       const updatedLeads = [...leadsRef.current, data]
       updateLeads(updatedLeads)
       showToast('Lead added')
+
+      // ── Log the create event (fire-and-forget, never blocks UI) ──
+      logActivity({
+        action: ACTIONS.LEAD_CREATED,
+        entityType: 'lead',
+        entityId: data.id,
+        projectId: activeProject.id,
+        metadata: { lead_name: data.hospital_name },
+      })
     }
     setModalOpen(false)
   }
@@ -220,6 +243,15 @@ export default function Dashboard({ role, onLogout }) {
     updateLeads(updatedLeads)
     await supabase.from('leads').delete().eq('id', lead.id)
     showToast('Lead deleted')
+
+    // ── Log the delete event (fire-and-forget, never blocks UI) ──
+    logActivity({
+      action: ACTIONS.LEAD_DELETED,
+      entityType: 'lead',
+      entityId: lead.id,
+      projectId: activeProject?.id,
+      metadata: { lead_name: lead.hospital_name },
+    })
   }
 
   const handleSaveProject = async (form) => {
@@ -229,6 +261,14 @@ export default function Dashboard({ role, onLogout }) {
         setProjects(projects.map(p => p.id === data.id ? data : p))
         if (activeProject?.id === data.id) setActiveProject(data)
         showToast('Project updated')
+
+        // ── Log project update (fire-and-forget) ──
+        logActivity({
+          action: ACTIONS.PROJECT_UPDATED,
+          entityType: 'project',
+          entityId: data.id,
+          metadata: { project_name: data.name },
+        })
       }
     } else {
       const { data, error } = await supabase.from('projects').insert([form]).select().single()
@@ -236,6 +276,14 @@ export default function Dashboard({ role, onLogout }) {
         setProjects([...projects, data])
         setActiveProject(data)
         showToast('Project created')
+
+        // ── Log project creation (fire-and-forget) ──
+        logActivity({
+          action: ACTIONS.PROJECT_CREATED,
+          entityType: 'project',
+          entityId: data.id,
+          metadata: { project_name: data.name },
+        })
       }
     }
     setProjectModalOpen(false)
@@ -251,6 +299,14 @@ export default function Dashboard({ role, onLogout }) {
         setActiveProject(remaining.length > 0 ? remaining[0] : null)
       }
       showToast('Project deleted')
+
+      // ── Log project deletion (fire-and-forget) ──
+      logActivity({
+        action: ACTIONS.PROJECT_DELETED,
+        entityType: 'project',
+        entityId: project.id,
+        metadata: { project_name: project.name },
+      })
     }
   }
 
