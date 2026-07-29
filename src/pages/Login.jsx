@@ -1,27 +1,28 @@
 import { useState } from 'react'
+import { supabase } from '../lib/supabase'
 
-const USERS = { raqeeb: 'raqeeb123', mubeen: 'mubeenAhmi123', mrdevs: 'mrdevs123' }
-const VIEWER_CREDENTIALS = { username: 'View', password: 'view1122' }
-
-export default function Login({ onLogin }) {
-  const [username, setUsername] = useState('')
+export default function Login() {
+  const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
+  const [loading, setLoading] = useState(false)
 
-  const handleLogin = () => {
-    if (USERS[username] && USERS[username] === password) {
-      onLogin('admin')
-    } else if (username === VIEWER_CREDENTIALS.username && password === VIEWER_CREDENTIALS.password) {
-      onLogin('viewer')
-    } else {
-      setError('Wrong username or password')
+  // ── SUPABASE LOGIN LOGIC ──
+  // Authenticates via Supabase. Success is handled automatically by App.jsx's listener.
+  const handleLogin = async () => {
+    if (!email || !password) {
+      setError('Please enter both email and password.')
+      return
     }
-  }
-
-  const handleViewerLogin = () => {
-    setUsername(VIEWER_CREDENTIALS.username)
-    setPassword(VIEWER_CREDENTIALS.password)
-    onLogin('viewer')
+    
+    setLoading(true)
+    const { error: authError } = await supabase.auth.signInWithPassword({ email, password })
+    
+    if (authError) {
+      setError(authError.message)
+      setLoading(false)
+    }
+    // If successful, App.jsx's onAuthStateChange listener will detect it and switch views
   }
 
   return (
@@ -38,10 +39,10 @@ export default function Login({ onLogin }) {
         <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
           <input
             className="input-base"
-            type="text"
-            placeholder="Username"
-            value={username}
-            onChange={e => { setUsername(e.target.value); setError('') }}
+            type="email"
+            placeholder="Email"
+            value={email}
+            onChange={e => { setEmail(e.target.value); setError('') }}
             onKeyDown={e => e.key === 'Enter' && handleLogin()}
           />
           <input
@@ -53,16 +54,8 @@ export default function Login({ onLogin }) {
             onKeyDown={e => e.key === 'Enter' && handleLogin()}
           />
           {error && <p style={{ color: '#f87171', fontSize: '12px' }}>{error}</p>}
-          <button className="btn-primary" onClick={handleLogin} style={{ marginTop: '4px' }}>
-            Sign in
-          </button>
-          <div style={{ display: 'flex', alignItems: 'center', margin: '8px 0' }}>
-            <div style={{ flex: 1, height: '0.5px', background: '#2a2a2a' }}></div>
-            <span style={{ fontSize: '11px', color: '#555', margin: '0 10px', textTransform: 'uppercase' }}>or</span>
-            <div style={{ flex: 1, height: '0.5px', background: '#2a2a2a' }}></div>
-          </div>
-          <button className="btn-ghost" onClick={handleViewerLogin}>
-            Login as Viewer
+          <button className="btn-primary" onClick={handleLogin} style={{ marginTop: '4px' }} disabled={loading}>
+            {loading ? 'Signing in...' : 'Sign in'}
           </button>
         </div>
 
