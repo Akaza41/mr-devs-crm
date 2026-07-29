@@ -6,9 +6,13 @@ export default function TeamPage() {
   const [team, setTeam] = useState([])
   const [loading, setLoading] = useState(true)
   const [inviteModalOpen, setInviteModalOpen] = useState(false)
+  const [currentUser, setCurrentUser] = useState(null)
 
   useEffect(() => {
     fetchTeam()
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setCurrentUser(session?.user?.id || null)
+    })
   }, [])
 
   // Fetch profiles from the Supabase public.profiles table
@@ -31,7 +35,12 @@ export default function TeamPage() {
     }
   }
 
-  const handleDelete = async (userId) => {
+  const handleDelete = async (userId, userEmail) => {
+    // ── Confirmation dialog before removing ──
+    if (!window.confirm(`Are you sure you want to remove ${userEmail} from the team? This action cannot be undone.`)) {
+      return
+    }
+
     // We cannot easily delete Auth users from the frontend, so we will show a message for now.
     alert('User removal requires backend action. Coming soon!')
   }
@@ -90,12 +99,17 @@ export default function TeamPage() {
                   <option value="employee">Employee</option>
                   <option value="viewer">Viewer</option>
                 </select>
-                <button 
-                  onClick={() => handleDelete(member.id)}
-                  style={{ background: 'none', border: '1px solid #333', borderRadius: '6px', color: '#f87171', padding: '6px 12px', cursor: 'pointer', fontSize: '12px' }}
-                >
-                  Remove
-                </button>
+                {/* ── Remove Button Safety Rules ──
+                    1. Never show if the member is the currently logged-in user.
+                    2. Never show if the member is an admin (admins must be demoted first). */}
+                {member.id !== currentUser && member.role !== 'admin' && (
+                  <button 
+                    onClick={() => handleDelete(member.id, member.email)}
+                    style={{ background: 'none', border: '1px solid #333', borderRadius: '6px', color: '#f87171', padding: '6px 12px', cursor: 'pointer', fontSize: '12px' }}
+                  >
+                    Remove
+                  </button>
+                )}
               </div>
 
             </div>
