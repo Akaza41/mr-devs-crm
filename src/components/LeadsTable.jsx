@@ -39,6 +39,14 @@ function ContactedBadge({ v }) {
   return <Badge text="No" type="gray" />
 }
 
+function StageBadge({ v }) {
+  if (v === 'Contacted') return <Badge text="Contacted" type="blue" />
+  if (v === 'Interested') return <Badge text="Interested" type="yellow" />
+  if (v === 'Converted') return <Badge text="Converted" type="green" />
+  if (v === 'Lost') return <Badge text="Lost" type="red" />
+  return <Badge text="New" type="gray" />
+}
+
 function ReplyBadge({ v }) {
   if (v === 'Yes') return <Badge text="Yes" type="green" />
   if (v === 'Later') return <Badge text="Later" type="yellow" />
@@ -91,7 +99,7 @@ export default function LeadsTable({ role, leads, customColumns = [], onEdit, on
       <table>
         <thead style={{ background: '#1a1a1a' }}>
           <tr>
-            {['#', 'Hospital Name', 'Type', 'Rating', 'Reviews', 'Phone', 'Number', 'Website', 'Priority', 'FB', 'Contacted', 'Reply', 'Notes', ...customColumns.map(c => c.display_name), role !== 'viewer' ? '' : null].filter(h => h !== null).map((h, i) => (
+            {['#', 'Hospital Name', 'Type', 'Rating', 'Reviews', 'Phone', 'Number', 'Website', 'Priority', 'Stage', 'FB', 'Contacted', 'Reply', 'Notes', ...customColumns.map(c => c.display_name), role !== 'viewer' ? '' : null].filter(h => h !== null).map((h, i) => (
               <th key={i} style={{ padding: '10px 16px', color: '#ededed', fontWeight: '500' }}>{h}</th>
             ))}
           </tr>
@@ -124,6 +132,7 @@ export default function LeadsTable({ role, leads, customColumns = [], onEdit, on
               <Cell id={`${i}-number`} textToCopy={lead.number_type}><NumberBadge v={lead.number_type} /></Cell>
               <Cell id={`${i}-web`} textToCopy={lead.has_website}><YesNo v={lead.has_website} /></Cell>
               <Cell id={`${i}-pri`} textToCopy={lead.priority}><PriorityBadge p={lead.priority} /></Cell>
+              <Cell id={`${i}-stage`} textToCopy={lead.stage || 'New'}><StageBadge v={lead.stage} /></Cell>
               <Cell id={`${i}-fb`} textToCopy={lead.fb_found}><FbBadge v={lead.fb_found} /></Cell>
               <Cell id={`${i}-cont`} textToCopy={lead.contacted}><ContactedBadge v={lead.contacted} /></Cell>
               <Cell id={`${i}-rep`} textToCopy={lead.reply}><ReplyBadge v={lead.reply} /></Cell>

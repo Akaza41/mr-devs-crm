@@ -17,7 +17,7 @@ export default function ImportModal({ file, activeProject, customColumns = [], o
   const [selectedRows, setSelectedRows] = useState(new Set())
   const [selectedCols, setSelectedCols] = useState(new Set())
 
-  const dbCols = ['hospital_name', 'address', 'type', 'rating', 'reviews', 'phone', 'number_type', 'has_website', 'priority', 'fb_found', 'contacted', 'reply', 'notes', ...customColumns.map(c => c.column_name)]
+  const dbCols = ['hospital_name', 'address', 'type', 'rating', 'reviews', 'phone', 'number_type', 'has_website', 'priority', 'stage', 'fb_found', 'contacted', 'reply', 'notes', ...customColumns.map(c => c.column_name)]
 
   // Column names that should NEVER be mapped — these are row IDs / serial numbers from Excel
   const blocklist = ['id', 'no', 'sr', 'sr_no', 'sno', 's_no', 'serial', 'serial_no', 'row', 'row_no', 'index', 'sl', 'sl_no', 'project_id', '#']
@@ -157,7 +157,7 @@ export default function ImportModal({ file, activeProject, customColumns = [], o
     if (!colName || !colName.trim()) return
 
     const key = colName.toLowerCase().replace(/[^a-z0-9]/g, '_')
-    const allDbCols = ['hospital_name', 'address', 'type', 'rating', 'phone', 'number_type', 'has_website', 'priority', 'fb_found', 'contacted', 'reply', 'notes', ...customColumns.map(c => c.column_name)]
+    const allDbCols = ['hospital_name', 'address', 'type', 'rating', 'reviews', 'phone', 'number_type', 'has_website', 'priority', 'stage', 'fb_found', 'contacted', 'reply', 'notes', ...customColumns.map(c => c.column_name)]
     if (allDbCols.includes(key)) {
       alert('A column with this name already exists.')
       return
@@ -233,7 +233,7 @@ export default function ImportModal({ file, activeProject, customColumns = [], o
     // SAFE LIST of allowed DB columns — only these can ever be inserted
     const allowedColumns = new Set([
       'hospital_name', 'address', 'type', 'rating', 'reviews', 'phone', 'number_type',
-      'has_website', 'priority', 'fb_found', 'contacted', 'reply', 'notes',
+      'has_website', 'priority', 'stage', 'fb_found', 'contacted', 'reply', 'notes',
       'project_id',
       ...customColumns.map(c => c.column_name)
     ])

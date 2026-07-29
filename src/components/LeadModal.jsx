@@ -10,6 +10,7 @@ const FIELDS = [
   { key: 'address', label: 'Address', type: 'text', full: true },
   { key: 'has_website', label: 'Has Website', type: 'select', options: ['No', 'Yes'] },
   { key: 'priority', label: 'Priority', type: 'select', options: ['High', 'Medium', 'Low'] },
+  { key: 'stage', label: 'Stage', type: 'select', options: ['New', 'Contacted', 'Interested', 'Converted', 'Lost'] },
   { key: 'fb_found', label: 'FB Found', type: 'select', options: ['No', 'Yes'] },
   { key: 'contacted', label: 'Contacted', type: 'select', options: ['No', 'Queued', 'Attempted', 'Yes', 'Not Reachable'] },
   { key: 'reply', label: 'Reply', type: 'select', options: ['', 'Yes', 'No', 'Later'] },
@@ -30,7 +31,7 @@ export default function LeadModal({ lead, customColumns = [], onClose, onSave })
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    setForm(lead || { has_website: 'No', priority: 'High', fb_found: 'No', contacted: 'No', reply: '' })
+    setForm(lead || { has_website: 'No', priority: 'High', stage: 'New', fb_found: 'No', contacted: 'No', reply: '' })
   }, [lead])
 
   const handleSave = () => {
