@@ -1,6 +1,28 @@
-export default function Toolbar({ role, search, setSearch, filterPriority, setFilterPriority, filterContacted, setFilterContacted, filterNumber, setFilterNumber, onAddLead, onManageColumns, onImportClick }) {
+export default function Toolbar({ role, currentView = 'leads', setCurrentView, search, setSearch, filterPriority, setFilterPriority, filterContacted, setFilterContacted, filterNumber, setFilterNumber, onAddLead, onManageColumns, onImportClick }) {
   return (
-    <div style={{ display: 'flex', gap: '10px', marginBottom: '16px', flexWrap: 'wrap', alignItems: 'center' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', marginBottom: '16px' }}>
+      
+      {/* Admin Tabs */}
+      {role === 'admin' && (
+        <div style={{ display: 'flex', gap: '16px', borderBottom: '0.5px solid #2a2a2a', paddingBottom: '12px' }}>
+          <button 
+            style={{ background: 'none', border: 'none', color: currentView === 'leads' ? '#3ecf8e' : '#a0a0a0', fontWeight: currentView === 'leads' ? '600' : '400', cursor: 'pointer', padding: 0 }}
+            onClick={() => setCurrentView('leads')}
+          >
+            Leads Management
+          </button>
+          <button 
+            style={{ background: 'none', border: 'none', color: currentView === 'team' ? '#3ecf8e' : '#a0a0a0', fontWeight: currentView === 'team' ? '600' : '400', cursor: 'pointer', padding: 0 }}
+            onClick={() => setCurrentView('team')}
+          >
+            Team
+          </button>
+        </div>
+      )}
+
+      {/* Leads Filters & Actions (Only show if viewing leads) */}
+      {currentView === 'leads' && (
+        <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', alignItems: 'center' }}>
       <div style={{ position: 'relative', flex: 1, minWidth: '200px' }}>
         <input className="input-base" type="text" placeholder="Search leads..." value={search} onChange={e => setSearch(e.target.value)} style={{ paddingLeft: '32px' }} />
         <svg style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: '#555' }} width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
@@ -31,6 +53,8 @@ export default function Toolbar({ role, search, setSearch, filterPriority, setFi
           <button className="btn-ghost" onClick={onManageColumns}>⚙️ Columns</button>
           <button className="btn-primary" onClick={onAddLead}>+ Add Lead</button>
         </>
+      )}
+        </div>
       )}
     </div>
   )

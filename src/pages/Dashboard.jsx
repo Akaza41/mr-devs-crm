@@ -8,12 +8,14 @@ import ColManager from '../components/ColManager'
 import ImportModal from '../components/ImportModal'
 import ProjectSelector from '../components/ProjectSelector'
 import ProjectModal from '../components/ProjectModal'
+import TeamPage from '../components/TeamPage'
 
 export default function Dashboard({ role, onLogout }) {
   const [projects, setProjects] = useState([])
   const [activeProject, setActiveProject] = useState(null)
   const [projectModalOpen, setProjectModalOpen] = useState(false)
   const [editingProject, setEditingProject] = useState(null)
+  const [currentView, setCurrentView] = useState('leads')
 
   const [leads, setLeads] = useState([])
   const [loading, setLoading] = useState(true)
@@ -306,9 +308,9 @@ export default function Dashboard({ role, onLogout }) {
         </div>
       ) : (
         <div style={{ padding: '24px' }}>
-          <StatsBar leads={leads} />
           <Toolbar
             role={role}
+            currentView={currentView} setCurrentView={setCurrentView}
             search={search} setSearch={setSearch}
             filterPriority={filterPriority} setFilterPriority={setFilterPriority}
             filterContacted={filterContacted} setFilterContacted={setFilterContacted}
@@ -317,11 +319,19 @@ export default function Dashboard({ role, onLogout }) {
             onManageColumns={() => setColManagerOpen(true)}
             onImportClick={() => fileInputRef?.current?.click()}
           />
-          <input type="file" accept=".xlsx,.csv" ref={fileInputRef} style={{ display: 'none' }} onChange={handleFileChange} />
-          {loading ? (
-            <div style={{ textAlign: 'center', padding: '60px', color: '#555', fontSize: '13px' }}>Loading leads...</div>
+          
+          {currentView === 'leads' ? (
+            <>
+              <StatsBar leads={leads} />
+              <input type="file" accept=".xlsx,.csv" ref={fileInputRef} style={{ display: 'none' }} onChange={handleFileChange} />
+              {loading ? (
+                <div style={{ textAlign: 'center', padding: '60px', color: '#555', fontSize: '13px' }}>Loading leads...</div>
+              ) : (
+                <LeadsTable role={role} leads={filteredLeads} customColumns={customColumns} onEdit={l => { setEditingLead(l); setModalOpen(true) }} onDelete={handleDelete} />
+              )}
+            </>
           ) : (
-            <LeadsTable role={role} leads={filteredLeads} customColumns={customColumns} onEdit={l => { setEditingLead(l); setModalOpen(true) }} onDelete={handleDelete} />
+            <TeamPage />
           )}
         </div>
       )}
