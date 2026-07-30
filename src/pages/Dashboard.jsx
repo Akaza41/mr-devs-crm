@@ -421,7 +421,7 @@ export default function Dashboard({ userProfile, role, onLogout }) {
           )}
           
           {currentView === 'team' && (
-            <TeamPage onSelectMember={(id) => { setSelectedUserId(id); setCurrentView('employee_profile') }} />
+            <TeamPage onViewProfile={(id) => { setSelectedUserId(id); setCurrentView('employee_profile') }} />
           )}
           
           {currentView === 'employee_profile' && (
