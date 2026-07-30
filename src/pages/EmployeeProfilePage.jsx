@@ -27,7 +27,7 @@ export default function EmployeeProfilePage({ userId, onBack }) {
     setLoading(true)
     const { data, error } = await supabase
       .from('profiles')
-      .select('id, email, role, full_name, avatar_url, username, created_at')
+      .select('id, email, role, full_name, avatar_url, created_at')
       .eq('id', userId)
       .single()
       
