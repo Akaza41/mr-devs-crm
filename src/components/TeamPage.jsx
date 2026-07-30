@@ -16,10 +16,14 @@ export default function TeamPage({ onViewProfile }) {
     })
   }, [])
 
-  // Fetch profiles from the Supabase public.profiles table
+  // Fetch profiles — select all fields the EmployeeCard needs to render correctly.
+  // full_name and avatar_url were added to the schema in Phase 6 migration.
   const fetchTeam = async () => {
     setLoading(true)
-    const { data, error } = await supabase.from('profiles').select('id, email, role').order('created_at', { ascending: true })
+    const { data, error } = await supabase
+      .from('profiles')
+      .select('id, email, role, full_name, avatar_url')
+      .order('created_at', { ascending: true })
     if (data && !error) {
       setTeam(data)
     }

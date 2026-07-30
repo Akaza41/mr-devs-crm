@@ -24,7 +24,13 @@ export default function EmployeeProfilePage({ userId, onBack }) {
 
   const fetchMemberData = async () => {
     setLoading(true)
-    const { data, error } = await supabase.from('profiles').select('*').eq('id', userId).single()
+    // Select specific columns that now exist after Phase 6 schema migration.
+    // Avoids relying on select('*') which could fail silently if columns are missing.
+    const { data, error } = await supabase
+      .from('profiles')
+      .select('id, email, role, full_name, avatar_url, username, created_at')
+      .eq('id', userId)
+      .single()
     if (!error && data) {
       setMember(data)
     }

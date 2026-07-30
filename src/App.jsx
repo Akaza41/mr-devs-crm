@@ -8,15 +8,23 @@ export default function App() {
   const [loading, setLoading] = useState(true)
 
   // ── SUPABASE AUTHENTICATION & SESSION PERSISTENCE ──
-  // Listens for session changes and fetches the user's role from the profiles table.
+  // Listens for session changes and fetches the user's full profile from the profiles table.
+  // 'employee' is treated as a valid role (viewer-level) so existing users keep access
+  // while the admin migrates them to proper RBAC roles in the Team page.
   useEffect(() => {
     let mounted = true
 
     async function fetchRole(userId) {
-      const { data, error } = await supabase.from('profiles').select('role').eq('id', userId).single()
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('role')
+        .eq('id', userId)
+        .single()
       if (mounted) {
-        if (data && !error) setRole(data.role)
-        else setRole(null) // fallback if no profile exists
+        // Accept any truthy role, including legacy 'employee'.
+        // The Dashboard uses role to conditionally show UI; RLS enforces actual DB permissions.
+        if (data && !error && data.role) setRole(data.role)
+        else setRole(null)
         setLoading(false)
       }
     }
