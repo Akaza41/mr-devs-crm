@@ -51,8 +51,10 @@ export default function EmployeeProfilePage({ userId, onBack }) {
     if (!error) {
       setMember({ ...member, ...updates })
       showToast('Profile updated successfully')
+      return true
     } else {
       showToast('Failed to update profile: ' + error.message)
+      return false
     }
   }
 

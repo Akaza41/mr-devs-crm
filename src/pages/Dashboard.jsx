@@ -65,33 +65,31 @@ export default function Dashboard({ userProfile, role, onLogout }) {
     }
   }
 
-  useEffect(() => {
-    let ignore = false
-
-    async function fetchLeads() {
-      if (!activeProject) return
-      setLoading(true)
-      const { data, error } = await supabase.from('leads').select('*').eq('project_id', activeProject.id)
-      if (!error && !ignore) {
-        const order = { High: 0, Medium: 1, Low: 2 }
-        const sorted = data.sort((a, b) => {
-          if (order[a.priority] !== order[b.priority]) return order[a.priority] - order[b.priority]
-          return (b.rating || 0) - (a.rating || 0)
-        })
-        setLeads(sorted)
-        leadsRef.current = sorted
-        historyRef.current = []
-        futureRef.current = []
-      }
-      if (!ignore) setLoading(false)
+  const fetchLeads = async (ignoreFlag = { current: false }) => {
+    if (!activeProject) return
+    setLoading(true)
+    const { data, error } = await supabase.from('leads').select('*').eq('project_id', activeProject.id)
+    if (!error && !ignoreFlag.current) {
+      const order = { High: 0, Medium: 1, Low: 2 }
+      const sorted = data.sort((a, b) => {
+        if (order[a.priority] !== order[b.priority]) return order[a.priority] - order[b.priority]
+        return (b.rating || 0) - (a.rating || 0)
+      })
+      setLeads(sorted)
+      leadsRef.current = sorted
+      historyRef.current = []
+      futureRef.current = []
     }
+    if (!ignoreFlag.current) setLoading(false)
+  }
 
+  useEffect(() => {
+    const ignoreFlag = { current: false }
     if (activeProject) {
       localStorage.setItem('mrdevs_last_project', activeProject.id)
-      fetchLeads()
+      fetchLeads(ignoreFlag)
     }
-
-    return () => { ignore = true }
+    return () => { ignoreFlag.current = true }
   }, [activeProject])
 
   async function fetchCustomColumns() {
@@ -195,6 +193,12 @@ export default function Dashboard({ userProfile, role, onLogout }) {
     if (!activeProject) return
     
     if (editingLead) {
+      const { error } = await supabase.from('leads').update(form).eq('id', editingLead.id)
+      if (error) {
+        showToast('Error updating lead: ' + error.message)
+        return
+      }
+
       // ── Action-based history: Track the UPDATE ──
       const before = { ...editingLead }
       const after = { ...editingLead, ...form }
@@ -202,7 +206,6 @@ export default function Dashboard({ userProfile, role, onLogout }) {
       
       const updatedLeads = leadsRef.current.map(l => l.id === editingLead.id ? after : l)
       updateLeads(updatedLeads)
-      await supabase.from('leads').update(form).eq('id', editingLead.id)
       showToast('Lead updated')
 
       // ── Log the update event (fire-and-forget, never blocks UI) ──
@@ -240,14 +243,20 @@ export default function Dashboard({ userProfile, role, onLogout }) {
   }
 
   const handleDelete = async (lead) => {
-    if (!confirm(`Delete ${lead.hospital_name}?`)) return
+    if (!window.confirm(`Delete ${lead.hospital_name}?`)) return
     
+    const { error } = await supabase.from('leads').delete().eq('id', lead.id)
+    
+    if (error) {
+      showToast('Error deleting lead: ' + error.message)
+      return
+    }
+
     // ── Action-based history: Track the DELETE ──
     pushHistory({ type: 'DELETE', lead })
     
     const updatedLeads = leadsRef.current.filter(l => l.id !== lead.id)
     updateLeads(updatedLeads)
-    await supabase.from('leads').delete().eq('id', lead.id)
     showToast('Lead deleted')
 
     // ── Log the delete event (fire-and-forget, never blocks UI) ──
@@ -263,7 +272,11 @@ export default function Dashboard({ userProfile, role, onLogout }) {
   const handleSaveProject = async (form) => {
     if (editingProject) {
       const { data, error } = await supabase.from('projects').update(form).eq('id', editingProject.id).select().single()
-      if (!error && data) {
+      if (error) {
+        showToast('Error updating project: ' + error.message)
+        return
+      }
+      if (data) {
         setProjects(projects.map(p => p.id === data.id ? data : p))
         if (activeProject?.id === data.id) setActiveProject(data)
         showToast('Project updated')
@@ -278,7 +291,11 @@ export default function Dashboard({ userProfile, role, onLogout }) {
       }
     } else {
       const { data, error } = await supabase.from('projects').insert([form]).select().single()
-      if (!error && data) {
+      if (error) {
+        showToast('Error creating project: ' + error.message)
+        return
+      }
+      if (data) {
         setProjects([...projects, data])
         setActiveProject(data)
         showToast('Project created')
@@ -296,7 +313,7 @@ export default function Dashboard({ userProfile, role, onLogout }) {
   }
 
   const handleDeleteProject = async (project) => {
-    if (!confirm(`Are you sure you want to delete the project "${project.name}" and all its leads?`)) return
+    if (!window.confirm(`Are you sure you want to delete the project "${project.name}" and all its leads?`)) return
     const { error } = await supabase.from('projects').delete().eq('id', project.id)
     if (!error) {
       const remaining = projects.filter(p => p.id !== project.id)
@@ -313,6 +330,8 @@ export default function Dashboard({ userProfile, role, onLogout }) {
         entityId: project.id,
         metadata: { project_name: project.name },
       })
+    } else {
+      showToast('Error deleting project: ' + error.message)
     }
   }
 

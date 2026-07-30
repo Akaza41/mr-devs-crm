@@ -18,32 +18,34 @@ export default function EmployeeProfileEditor({ member, onSave, isCurrentUser })
     }
   }, [member])
 
-  const handleSave = () => {
+  const handleSave = async () => {
     // ── Detect if role specifically changed so we can fire ROLE_CHANGED in addition to PROFILE_UPDATED ──
     const roleChanged = role !== member.role
     
-    onSave({ full_name: fullName, role })
-
-    // ── Log profile update (fire-and-forget, never blocks UI) ──
-    logActivity({
-      action: ACTIONS.PROFILE_UPDATED,
-      entityType: 'profile',
-      entityId: member.id,
-      metadata: { full_name: fullName },
-    })
-
-    // ── Log role change as a separate event for cleaner audit trail ──
-    if (roleChanged) {
+    const success = await onSave({ full_name: fullName, role })
+    
+    if (success) {
+      // ── Log profile update (fire-and-forget, never blocks UI) ──
       logActivity({
-        action: ACTIONS.ROLE_CHANGED,
+        action: ACTIONS.PROFILE_UPDATED,
         entityType: 'profile',
         entityId: member.id,
-        metadata: {
-          target_email: member.email,
-          old_role: member.role,
-          new_role: role,
-        },
+        metadata: { full_name: fullName },
       })
+
+      // ── Log role change as a separate event for cleaner audit trail ──
+      if (roleChanged) {
+        logActivity({
+          action: ACTIONS.ROLE_CHANGED,
+          entityType: 'profile',
+          entityId: member.id,
+          metadata: {
+            target_email: member.email,
+            old_role: member.role,
+            new_role: role,
+          },
+        })
+      }
     }
   }
 
