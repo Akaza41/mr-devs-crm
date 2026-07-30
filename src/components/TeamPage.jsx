@@ -3,7 +3,7 @@ import { supabase } from '../lib/supabase'
 import EmployeeCard from './team/EmployeeCard'
 import AddMemberModal from './team/AddMemberModal'
 
-export default function TeamPage({ onViewProfile }) {
+export default function TeamPage({ onViewProfile, onlineUserIds = new Set() }) {
   const [team, setTeam] = useState([])
   const [loading, setLoading] = useState(true)
   const [currentUser, setCurrentUser] = useState(null)
@@ -92,6 +92,7 @@ export default function TeamPage({ onViewProfile }) {
             <EmployeeCard 
               key={member.id} 
               member={member} 
+              isOnline={onlineUserIds.has(member.id)}
               onViewProfile={onViewProfile} 
             />
           ))}

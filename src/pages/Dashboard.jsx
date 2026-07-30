@@ -39,6 +39,7 @@ export default function Dashboard({ userProfile, role, onLogout }) {
   const [customColumns, setCustomColumns] = useState([])
   const [editingLead, setEditingLead] = useState(null)
   const [toast, setToast] = useState('')
+  const [onlineUserIds, setOnlineUserIds] = useState(new Set()) // Tracks real-time presence
 
   const fileInputRef = useRef(null)
   const historyRef = useRef([])
@@ -49,6 +50,35 @@ export default function Dashboard({ userProfile, role, onLogout }) {
     fetchCustomColumns()
     fetchProjects()
   }, [])
+
+  // ── Realtime Presence ──
+  // Track this user globally so others see them online, and listen for team members' status.
+  useEffect(() => {
+    if (!userProfile) return
+
+    const channel = supabase.channel('team-presence')
+
+    channel
+      .on('presence', { event: 'sync' }, () => {
+        const state = channel.presenceState()
+        const ids = new Set()
+        for (const key in state) {
+          state[key].forEach(presence => {
+            if (presence.user_id) ids.add(presence.user_id)
+          })
+        }
+        setOnlineUserIds(ids)
+      })
+      .subscribe(async (status) => {
+        if (status === 'SUBSCRIBED') {
+          await channel.track({ user_id: userProfile.id })
+        }
+      })
+
+    return () => {
+      supabase.removeChannel(channel)
+    }
+  }, [userProfile])
 
   async function fetchProjects() {
     setLoading(true)
@@ -421,7 +451,10 @@ export default function Dashboard({ userProfile, role, onLogout }) {
           )}
           
           {currentView === 'team' && (
-            <TeamPage onViewProfile={(id) => { setSelectedUserId(id); setCurrentView('employee_profile') }} />
+            <TeamPage 
+              onlineUserIds={onlineUserIds} 
+              onViewProfile={(id) => { setSelectedUserId(id); setCurrentView('employee_profile') }} 
+            />
           )}
           
           {currentView === 'employee_profile' && (

@@ -17,12 +17,10 @@ export function RoleBadge({ role }) {
 // ── EMPLOYEE CARD ──
 // Reusable component displaying a summary of an employee.
 // Receives data via props to remain decoupled from the data source.
-export default function EmployeeCard({ member, onViewProfile }) {
+export default function EmployeeCard({ member, isOnline, onViewProfile }) {
   const displayName = member.full_name || member.username || 'Unnamed User'
   const initial = displayName.charAt(0).toUpperCase()
-  
-  // Calculate online status based on last_active (within 15 mins = online)
-  const isOnline = member.metrics?.last_active && (new Date() - new Date(member.metrics.last_active)) < 15 * 60 * 1000
+
 
   return (
     <div style={{ background: '#1a1a1a', border: '0.5px solid #2a2a2a', borderRadius: '12px', padding: '20px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
