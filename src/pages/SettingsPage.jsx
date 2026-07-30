@@ -90,50 +90,6 @@ export default function SettingsPage({ userProfile }) {
                 {loading ? 'Updating...' : 'Update Password'}
               </button>
             </form>
-
-            <div style={{ marginTop: '32px', paddingTop: '20px', borderTop: '1px solid #2a2a2a' }}>
-              <div style={{ fontSize: '13px', color: '#a0a0a0', marginBottom: '12px' }}>Active Sessions</div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#242424', padding: '12px', borderRadius: '8px' }}>
-                <div>
-                  <div style={{ fontSize: '13px', color: '#ededed' }}>Current Session</div>
-                  <div style={{ fontSize: '11px', color: '#555' }}>Logged in via this browser</div>
-                </div>
-                <button className="btn-ghost" disabled>Sign out all sessions (Soon)</button>
-              </div>
-            </div>
-          </div>
-        </section>
-
-        {/* Appearance Section */}
-        <section>
-          <h2 style={{ fontSize: '16px', fontWeight: '500', color: '#a0a0a0', marginBottom: '16px', borderBottom: '1px solid #2a2a2a', paddingBottom: '8px' }}>Appearance</h2>
-          <div className="card" style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <div style={{ fontSize: '13px', color: '#ededed' }}>Theme</div>
-              <div style={{ display: 'flex', gap: '8px' }}>
-                <button className="btn-primary">Dark Mode</button>
-                <button className="btn-ghost" disabled>Light Mode</button>
-              </div>
-            </div>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <div style={{ fontSize: '13px', color: '#ededed' }}>Accent Color</div>
-              <div style={{ display: 'flex', gap: '8px' }}>
-                <div style={{ width: '24px', height: '24px', borderRadius: '50%', background: '#3ecf8e', border: '2px solid #fff' }}></div>
-                <div style={{ width: '24px', height: '24px', borderRadius: '50%', background: '#3b82f6', opacity: 0.5, cursor: 'not-allowed' }}></div>
-                <div style={{ width: '24px', height: '24px', borderRadius: '50%', background: '#a855f7', opacity: 0.5, cursor: 'not-allowed' }}></div>
-              </div>
-            </div>
-          </div>
-        </section>
-
-        {/* Preferences Section */}
-        <section>
-          <h2 style={{ fontSize: '16px', fontWeight: '500', color: '#a0a0a0', marginBottom: '16px', borderBottom: '1px solid #2a2a2a', paddingBottom: '8px' }}>Preferences</h2>
-          <div className="card" style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <div style={{ fontSize: '13px', color: '#ededed' }}>Email Notifications</div>
-              <button className="btn-ghost" disabled>Configure (Soon)</button>
-            </div>
           </div>
         </section>
 

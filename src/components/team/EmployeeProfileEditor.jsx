@@ -19,13 +19,6 @@ export default function EmployeeProfileEditor({ member, onSave, isCurrentUser })
   }, [member])
 
   const handleSave = () => {
-    if (isCurrentUser && role !== member.role) {
-      if (!window.confirm("You are about to change your own role. You might lose admin access. Continue?")) {
-        setRole(member.role)
-        return
-      }
-    }
-
     // ── Detect if role specifically changed so we can fire ROLE_CHANGED in addition to PROFILE_UPDATED ──
     const roleChanged = role !== member.role
     

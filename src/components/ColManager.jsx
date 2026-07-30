@@ -6,6 +6,7 @@ export default function ColManager({ onClose, onCustomColumnsChange }) {
   const [newColName, setNewColName] = useState('')
   const [newColType, setNewColType] = useState('Text')
   const [loading, setLoading] = useState(false)
+  const [errorMsg, setErrorMsg] = useState('')
 
   async function fetchColumns() {
     const { data } = await supabase.from('custom_columns').select('*').order('created_at', { ascending: true })
@@ -18,10 +19,11 @@ export default function ColManager({ onClose, onCustomColumnsChange }) {
   }, [])
 
   const handleAdd = async () => {
+    setErrorMsg('')
     if (!newColName.trim()) return
     const key = newColName.toLowerCase().replace(/[^a-z0-9]/g, '_')
     if (columns.find(c => c.column_name === key)) {
-      alert('Column already exists')
+      setErrorMsg('Column already exists')
       return
     }
     
@@ -33,7 +35,7 @@ export default function ColManager({ onClose, onCustomColumnsChange }) {
     })
     
     if (rpcError) {
-      alert('Error adding column: ' + rpcError.message)
+      setErrorMsg('Error adding column: ' + rpcError.message)
       setLoading(false)
       return
     }
@@ -56,7 +58,7 @@ export default function ColManager({ onClose, onCustomColumnsChange }) {
   }
 
   const handleDelete = async (col) => {
-    if (!confirm(`Delete column "${col.display_name}"? This will drop the data for this column!`)) return
+    if (!window.confirm(`Delete column "${col.display_name}"? This will drop the data for this column!`)) return
     setLoading(true)
     
     const { error: rpcError } = await supabase.rpc('delete_custom_column', {
@@ -64,7 +66,7 @@ export default function ColManager({ onClose, onCustomColumnsChange }) {
     })
 
     if (rpcError) {
-      alert('Error deleting column: ' + rpcError.message)
+      setErrorMsg('Error deleting column: ' + rpcError.message)
       setLoading(false)
       return
     }
@@ -87,6 +89,13 @@ export default function ColManager({ onClose, onCustomColumnsChange }) {
         </div>
         
         <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+          
+          {errorMsg && (
+            <div style={{ background: '#f8717122', border: '0.5px solid #f87171', color: '#f87171', padding: '8px 12px', borderRadius: '6px', fontSize: '12px' }}>
+              {errorMsg}
+            </div>
+          )}
+
           <div>
             <div style={{ fontSize: '11px', color: '#a0a0a0', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Existing Custom Columns</div>
             {columns.length === 0 ? (

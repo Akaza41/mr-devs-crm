@@ -1,12 +1,10 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
-import TeamInviteModal from './TeamInviteModal'
 import EmployeeCard from './team/EmployeeCard'
 
 export default function TeamPage({ onViewProfile }) {
   const [team, setTeam] = useState([])
   const [loading, setLoading] = useState(true)
-  const [inviteModalOpen, setInviteModalOpen] = useState(false)
   const [currentUser, setCurrentUser] = useState(null)
 
   useEffect(() => {
@@ -47,15 +45,12 @@ export default function TeamPage({ onViewProfile }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '24px', paddingTop: '12px' }}>
       
-      {/* Header section with prominent invite button */}
+      {/* Header section */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <div>
           <h2 style={{ fontSize: '18px', fontWeight: '600', color: '#ededed', margin: 0 }}>Team Members</h2>
           <p style={{ fontSize: '13px', color: '#a0a0a0', margin: '4px 0 0 0' }}>Manage access and roles for your CRM users.</p>
         </div>
-        <button className="btn-primary" onClick={() => setInviteModalOpen(true)}>
-          + Invite New Member
-        </button>
       </div>
 
       {loading ? (
@@ -64,8 +59,6 @@ export default function TeamPage({ onViewProfile }) {
         // Empty state
         <div style={{ textAlign: 'center', padding: '60px', background: '#1a1a1a', border: '0.5px solid #2a2a2a', borderRadius: '12px' }}>
           <div style={{ fontSize: '15px', color: '#ededed', fontWeight: '500', marginBottom: '8px' }}>No team members yet</div>
-          <div style={{ fontSize: '13px', color: '#a0a0a0', marginBottom: '16px' }}>Invite your first team member to start collaborating.</div>
-          <button className="btn-primary" onClick={() => setInviteModalOpen(true)}>+ Invite New Member</button>
         </div>
       ) : (
         // Cards Grid Layout
@@ -78,16 +71,6 @@ export default function TeamPage({ onViewProfile }) {
             />
           ))}
         </div>
-      )}
-
-      {inviteModalOpen && (
-        <TeamInviteModal 
-          onClose={() => setInviteModalOpen(false)}
-          onSuccess={() => {
-            setInviteModalOpen(false)
-            fetchTeam()
-          }}
-        />
       )}
 
     </div>

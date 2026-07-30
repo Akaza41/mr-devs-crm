@@ -12,6 +12,7 @@ export default function EmployeeProfilePage({ userId, onBack }) {
   const [member, setMember] = useState(null)
   const [loading, setLoading] = useState(true)
   const [currentUser, setCurrentUser] = useState(null)
+  const [toast, setToast] = useState('')
 
   useEffect(() => {
     // Get the ID of the currently logged-in user to enforce safety rules in the editor
@@ -40,14 +41,18 @@ export default function EmployeeProfilePage({ userId, onBack }) {
     setLoading(false)
   }
 
+  const showToast = (msg) => {
+    setToast(msg)
+    setTimeout(() => setToast(''), 3000)
+  }
+
   const handleSaveProfile = async (updates) => {
     const { error } = await supabase.from('profiles').update(updates).eq('id', userId)
     if (!error) {
       setMember({ ...member, ...updates })
-      // Toast notification would go here in a full app
-      alert('Profile updated successfully')
+      showToast('Profile updated successfully')
     } else {
-      alert('Failed to update profile')
+      showToast('Failed to update profile: ' + error.message)
     }
   }
 
@@ -60,8 +65,14 @@ export default function EmployeeProfilePage({ userId, onBack }) {
   }
 
   return (
-    <div style={{ padding: '12px 0', maxWidth: '800px', margin: '0 auto' }}>
+    <div style={{ padding: '12px 0', maxWidth: '800px', margin: '0 auto', position: 'relative' }}>
       
+      {toast && (
+        <div style={{ position: 'fixed', bottom: '24px', left: '50%', transform: 'translateX(-50%)', background: '#1a1a1a', border: '0.5px solid #3ecf8e', borderRadius: '8px', padding: '10px 20px', color: '#3ecf8e', fontSize: '13px', zIndex: 999 }}>
+          {toast}
+        </div>
+      )}
+
       {/* Back button */}
       <button 
         onClick={onBack}
