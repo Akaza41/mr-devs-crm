@@ -71,7 +71,7 @@ export default function EmployeeProfilePage({ userId, onBack }) {
         isCurrentUser={currentUser === member.id}
       />
       
-      <EmployeeActivityFeed />
+      <EmployeeActivityFeed userId={member.id} />
 
     </div>
   )
