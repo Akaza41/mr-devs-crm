@@ -10,6 +10,7 @@ import ProjectSelector from '../components/ProjectSelector'
 import ProjectModal from '../components/ProjectModal'
 import TeamPage from '../components/TeamPage'
 import EmployeeProfilePage from './EmployeeProfilePage'
+import { canManageProjects, isReadOnly } from '../lib/permissions'
 // ── Activity Logging ──
 // Import the logger and action constants to record business events without
 // scattering raw insert logic across multiple components.
@@ -333,12 +334,12 @@ export default function Dashboard({ role, onLogout }) {
             onDeleteProject={handleDeleteProject}
             onNewProject={() => { setEditingProject(null); setProjectModalOpen(true) }}
           />
-          {role === 'viewer' && (
+          {isReadOnly(role) && (
             <span className="badge badge-gray" style={{ marginLeft: '12px' }}>👁️ View Only</span>
           )}
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-          {role !== 'viewer' && projects.length > 0 && (
+          {!isReadOnly(role) && projects.length > 0 && (
             <>
               <button onClick={undo} style={{ background: 'none', border: '0.5px solid #2a2a2a', borderRadius: '6px', color: '#a0a0a0', cursor: 'pointer', padding: '5px 10px', fontSize: '13px' }}>
                 ↩ Undo
@@ -358,7 +359,7 @@ export default function Dashboard({ role, onLogout }) {
       {projects.length === 0 ? (
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: 'calc(100vh - 56px)', gap: '16px' }}>
           <div style={{ fontSize: '18px', color: '#ededed', fontWeight: '500' }}>Create your first project to get started</div>
-          {role !== 'viewer' ? (
+          {canManageProjects(role) ? (
             <button className="btn-primary" onClick={() => { setEditingProject(null); setProjectModalOpen(true) }}>+ New Project</button>
           ) : (
             <div style={{ color: '#555', fontSize: '13px' }}>No projects exist yet. Ask an admin to create one.</div>

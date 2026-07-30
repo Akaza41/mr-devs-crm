@@ -6,7 +6,10 @@ import React from 'react'
 export function RoleBadge({ role }) {
   const r = role?.toLowerCase()
   if (r === 'admin') return <span style={{ display: 'inline-block', padding: '2px 8px', borderRadius: '12px', fontSize: '11px', fontWeight: '600', background: 'rgba(62,207,142,0.1)', color: '#3ecf8e', border: '0.5px solid rgba(62,207,142,0.2)' }}>Admin</span>
-  if (r === 'employee') return <span style={{ display: 'inline-block', padding: '2px 8px', borderRadius: '12px', fontSize: '11px', fontWeight: '600', background: 'rgba(59,130,246,0.1)', color: '#3b82f6', border: '0.5px solid rgba(59,130,246,0.2)' }}>Employee</span>
+  if (r === 'manager') return <span style={{ display: 'inline-block', padding: '2px 8px', borderRadius: '12px', fontSize: '11px', fontWeight: '600', background: 'rgba(168,85,247,0.1)', color: '#a855f7', border: '0.5px solid rgba(168,85,247,0.2)' }}>Manager</span>
+  if (r === 'sales') return <span style={{ display: 'inline-block', padding: '2px 8px', borderRadius: '12px', fontSize: '11px', fontWeight: '600', background: 'rgba(234,179,8,0.1)', color: '#eab308', border: '0.5px solid rgba(234,179,8,0.2)' }}>Sales</span>
+  if (r === 'lead generator') return <span style={{ display: 'inline-block', padding: '2px 8px', borderRadius: '12px', fontSize: '11px', fontWeight: '600', background: 'rgba(236,72,153,0.1)', color: '#ec4899', border: '0.5px solid rgba(236,72,153,0.2)' }}>Lead Gen</span>
+  if (r === 'viewer' || r === 'employee') return <span style={{ display: 'inline-block', padding: '2px 8px', borderRadius: '12px', fontSize: '11px', fontWeight: '600', background: 'rgba(59,130,246,0.1)', color: '#3b82f6', border: '0.5px solid rgba(59,130,246,0.2)' }}>{r === 'employee' ? 'Employee' : 'Viewer'}</span>
   
   return <span style={{ display: 'inline-block', padding: '2px 8px', borderRadius: '12px', fontSize: '11px', fontWeight: '600', background: 'rgba(156,163,175,0.1)', color: '#9ca3af', border: '0.5px solid rgba(156,163,175,0.2)', textTransform: 'capitalize' }}>{role || 'Unknown'}</span>
 }

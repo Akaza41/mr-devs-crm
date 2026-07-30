@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { canWriteLeads, canDeleteLeads, isReadOnly } from '../lib/permissions'
 
 function Badge({ text, type }) {
   const styles = {
@@ -64,7 +65,7 @@ export default function LeadsTable({ role, leads, customColumns = [], onEdit, on
   const [copiedCell, setCopiedCell] = useState(null)
 
   const handleCopy = (text, id) => {
-    if (role !== 'viewer' || !text || text === '—') return
+    if (isReadOnly(role) || !text || text === '—') return
     navigator.clipboard.writeText(text)
     setCopiedCell(id)
     setTimeout(() => setCopiedCell(null), 1500)
@@ -75,7 +76,7 @@ export default function LeadsTable({ role, leads, customColumns = [], onEdit, on
     return (
       <td 
         onClick={() => handleCopy(textToCopy, id)}
-        style={{ position: 'relative', cursor: role === 'viewer' && textToCopy && textToCopy !== '—' ? 'pointer' : 'default', background: isCopied ? '#2a2a2a' : '', ...style }}
+        style={{ position: 'relative', cursor: !isReadOnly(role) && textToCopy && textToCopy !== '—' ? 'pointer' : 'default', background: isCopied ? '#2a2a2a' : '', ...style }}
         {...props}
       >
         {isCopied && (
@@ -99,7 +100,7 @@ export default function LeadsTable({ role, leads, customColumns = [], onEdit, on
       <table>
         <thead style={{ background: '#1a1a1a' }}>
           <tr>
-            {['#', 'Hospital Name', 'Type', 'Rating', 'Reviews', 'Phone', 'Number', 'Website', 'Priority', 'Stage', 'FB', 'Contacted', 'Reply', 'Notes', ...customColumns.map(c => c.display_name), role !== 'viewer' ? '' : null].filter(h => h !== null).map((h, i) => (
+            {['#', 'Hospital Name', 'Type', 'Rating', 'Reviews', 'Phone', 'Number', 'Website', 'Priority', 'Stage', 'FB', 'Contacted', 'Reply', 'Notes', ...customColumns.map(c => c.display_name), (canWriteLeads(role) || canDeleteLeads(role)) ? '' : null].filter(h => h !== null).map((h, i) => (
               <th key={i} style={{ padding: '10px 16px', color: '#ededed', fontWeight: '500' }}>{h}</th>
             ))}
           </tr>
@@ -148,11 +149,15 @@ export default function LeadsTable({ role, leads, customColumns = [], onEdit, on
                   )}
                 </Cell>
               ))}
-              {role !== 'viewer' && (
+              {(canWriteLeads(role) || canDeleteLeads(role)) && (
                 <td>
                   <div style={{ display: 'flex', gap: '12px', opacity: '0' }} className="actions">
-                    <button onClick={() => onEdit(lead)} style={{ background: 'none', border: 'none', color: '#a0a0a0', cursor: 'pointer', fontSize: '12px', padding: '0' }}>Edit</button>
-                    <button onClick={() => onDelete(lead)} style={{ background: 'none', border: 'none', color: '#f87171', cursor: 'pointer', fontSize: '12px', padding: '0' }}>Delete</button>
+                    {canWriteLeads(role) && (
+                      <button onClick={() => onEdit(lead)} style={{ background: 'none', border: 'none', color: '#a0a0a0', cursor: 'pointer', fontSize: '12px', padding: '0' }}>Edit</button>
+                    )}
+                    {canDeleteLeads(role) && (
+                      <button onClick={() => onDelete(lead)} style={{ background: 'none', border: 'none', color: '#f87171', cursor: 'pointer', fontSize: '12px', padding: '0' }}>Delete</button>
+                    )}
                   </div>
                 </td>
               )}
