@@ -20,6 +20,9 @@ export function RoleBadge({ role }) {
 export default function EmployeeCard({ member, onViewProfile }) {
   const displayName = member.full_name || member.username || 'Unnamed User'
   const initial = displayName.charAt(0).toUpperCase()
+  
+  // Calculate online status based on last_active (within 15 mins = online)
+  const isOnline = member.metrics?.last_active && (new Date() - new Date(member.metrics.last_active)) < 15 * 60 * 1000
 
   return (
     <div style={{ background: '#1a1a1a', border: '0.5px solid #2a2a2a', borderRadius: '12px', padding: '20px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
@@ -37,10 +40,10 @@ export default function EmployeeCard({ member, onViewProfile }) {
             <div style={{ fontSize: '15px', fontWeight: '500', color: '#ededed', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
               {displayName}
             </div>
-            {/* Placeholder Online Status - Always gray "Offline" for now */}
+            
             <div style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '11px', color: '#a0a0a0' }}>
-              <div style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#555' }}></div>
-              Offline
+              <div style={{ width: '6px', height: '6px', borderRadius: '50%', background: isOnline ? '#3ecf8e' : '#555' }}></div>
+              {isOnline ? <span style={{ color: '#3ecf8e' }}>Online</span> : 'Offline'}
             </div>
           </div>
           
@@ -54,26 +57,27 @@ export default function EmployeeCard({ member, onViewProfile }) {
         </div>
       </div>
 
-      {/* Metrics Grid (Placeholders for Phase 4) */}
+      {/* Metrics Grid (Populated from Phase 4 activity logs) */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginTop: '8px', padding: '12px', background: '#141414', borderRadius: '8px', border: '0.5px solid #222' }}>
         <div>
           <div style={{ fontSize: '11px', color: '#555', textTransform: 'uppercase' }}>Leads Added</div>
-          <div style={{ fontSize: '13px', color: '#a0a0a0', fontWeight: '500', marginTop: '2px' }}>--</div>
+          <div style={{ fontSize: '13px', color: '#a0a0a0', fontWeight: '500', marginTop: '2px' }}>{member.metrics?.leads_added || 0}</div>
         </div>
         <div>
           <div style={{ fontSize: '11px', color: '#555', textTransform: 'uppercase' }}>Leads Edited</div>
-          <div style={{ fontSize: '13px', color: '#a0a0a0', fontWeight: '500', marginTop: '2px' }}>--</div>
+          <div style={{ fontSize: '13px', color: '#a0a0a0', fontWeight: '500', marginTop: '2px' }}>{member.metrics?.leads_edited || 0}</div>
         </div>
         <div>
-          <div style={{ fontSize: '11px', color: '#555', textTransform: 'uppercase' }}>Hours Worked</div>
-          <div style={{ fontSize: '13px', color: '#a0a0a0', fontWeight: '500', marginTop: '2px' }}>--</div>
+          <div style={{ fontSize: '11px', color: '#555', textTransform: 'uppercase' }}>Total Actions</div>
+          <div style={{ fontSize: '13px', color: '#a0a0a0', fontWeight: '500', marginTop: '2px' }}>{member.metrics?.total_actions || 0}</div>
         </div>
         <div>
-          <div style={{ fontSize: '11px', color: '#555', textTransform: 'uppercase' }}>Last Login</div>
-          <div style={{ fontSize: '13px', color: '#a0a0a0', fontWeight: '500', marginTop: '2px' }}>Phase 4</div>
+          <div style={{ fontSize: '11px', color: '#555', textTransform: 'uppercase' }}>Last Active</div>
+          <div style={{ fontSize: '13px', color: '#a0a0a0', fontWeight: '500', marginTop: '2px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+            {member.metrics?.last_active ? new Date(member.metrics.last_active).toLocaleDateString() : 'Never'}
+          </div>
         </div>
       </div>
-
       {/* Actions */}
       <div style={{ marginTop: 'auto', paddingTop: '8px' }}>
         <button 

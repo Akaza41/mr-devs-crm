@@ -14,6 +14,9 @@ export default function EmployeeHeader({ member }) {
     ? new Date(member.created_at).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }) 
     : 'Unknown'
 
+  // Calculate online status
+  const isOnline = member.metrics?.last_active && (new Date() - new Date(member.metrics.last_active)) < 15 * 60 * 1000
+
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: '20px', background: '#1a1a1a', padding: '24px', borderRadius: '12px', border: '0.5px solid #2a2a2a' }}>
       
@@ -37,8 +40,8 @@ export default function EmployeeHeader({ member }) {
         
         <div style={{ display: 'flex', gap: '24px', marginTop: '12px', fontSize: '13px', color: '#555' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-            <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#555' }}></div>
-            Offline (Phase 4)
+            <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: isOnline ? '#3ecf8e' : '#555' }}></div>
+            {isOnline ? <span style={{ color: '#3ecf8e' }}>Online</span> : 'Offline'}
           </div>
           <div>
             Joined: <span style={{ color: '#a0a0a0' }}>{joinedDate}</span>

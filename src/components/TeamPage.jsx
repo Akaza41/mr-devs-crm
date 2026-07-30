@@ -20,12 +20,23 @@ export default function TeamPage({ onViewProfile }) {
   // full_name and avatar_url were added to the schema in Phase 6 migration.
   const fetchTeam = async () => {
     setLoading(true)
-    const { data, error } = await supabase
+    const { data: profiles, error } = await supabase
       .from('profiles')
       .select('id, email, role, full_name, avatar_url')
       .order('created_at', { ascending: true })
-    if (data && !error) {
-      setTeam(data)
+
+    if (profiles && !error) {
+      // Fetch metrics for the entire team in one query
+      const { data: metrics } = await supabase.rpc('get_team_metrics')
+      
+      const teamWithMetrics = profiles.map(member => {
+        const memberMetrics = metrics?.find(m => m.user_id === member.id)
+        return {
+          ...member,
+          metrics: memberMetrics || { leads_added: 0, leads_edited: 0, total_actions: 0, last_active: null }
+        }
+      })
+      setTeam(teamWithMetrics)
     }
     setLoading(false)
   }

@@ -1,16 +1,25 @@
 import React from 'react'
 
 // ── EMPLOYEE STATS CARDS ──
-// Renders professional SaaS dashboard metrics for the employee.
-// In Phase 3, these simply display placeholders to reserve the layout.
-export default function EmployeeStatsCards() {
+// Renders professional SaaS dashboard metrics for the employee
+// using real data aggregated from the activity_logs table.
+export default function EmployeeStatsCards({ member }) {
+  const metrics = member?.metrics
+
+  // Fallback defaults if no activity logs exist yet
+  const leadsAdded = metrics?.leads_added || 0
+  const leadsEdited = metrics?.leads_edited || 0
+  const totalActions = metrics?.total_actions || 0
   
+  // Calculate if online (active within 15 minutes)
+  const isOnline = metrics?.last_active && (new Date() - new Date(metrics.last_active)) < 15 * 60 * 1000
+  const statusText = isOnline ? 'Online Now' : (metrics?.last_active ? new Date(metrics.last_active).toLocaleString() : 'Never')
+
   const stats = [
-    { label: 'Hours Worked', value: '--', subtext: 'Coming in Phase 4' },
-    { label: 'Leads Added', value: '--', subtext: 'No data yet' },
-    { label: 'Leads Edited', value: '--', subtext: 'No data yet' },
-    { label: 'Total Imports', value: '--', subtext: 'No data yet' },
-    { label: 'Last Login', value: '--', subtext: 'Coming in Phase 4' }
+    { label: 'Leads Added', value: leadsAdded, subtext: 'Total leads created' },
+    { label: 'Leads Edited', value: leadsEdited, subtext: 'Total leads updated' },
+    { label: 'Total Actions', value: totalActions, subtext: 'All CRM activities' },
+    { label: 'Last Active', value: isOnline ? 'Active' : 'Offline', subtext: statusText, highlight: isOnline }
   ]
 
   return (
@@ -20,10 +29,10 @@ export default function EmployeeStatsCards() {
           <div style={{ fontSize: '12px', color: '#a0a0a0', fontWeight: '500', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
             {stat.label}
           </div>
-          <div style={{ fontSize: '28px', color: '#ededed', fontWeight: '600', marginTop: '8px' }}>
+          <div style={{ fontSize: '24px', color: stat.highlight ? '#3ecf8e' : '#ededed', fontWeight: '600', marginTop: '8px' }}>
             {stat.value}
           </div>
-          <div style={{ fontSize: '11px', color: '#555', marginTop: '4px' }}>
+          <div style={{ fontSize: '11px', color: '#555', marginTop: '4px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
             {stat.subtext}
           </div>
         </div>
@@ -31,3 +40,4 @@ export default function EmployeeStatsCards() {
     </div>
   )
 }
+

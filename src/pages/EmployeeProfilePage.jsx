@@ -24,15 +24,18 @@ export default function EmployeeProfilePage({ userId, onBack }) {
 
   const fetchMemberData = async () => {
     setLoading(true)
-    // Select specific columns that now exist after Phase 6 schema migration.
-    // Avoids relying on select('*') which could fail silently if columns are missing.
     const { data, error } = await supabase
       .from('profiles')
       .select('id, email, role, full_name, avatar_url, username, created_at')
       .eq('id', userId)
       .single()
+      
     if (!error && data) {
-      setMember(data)
+      // Fetch metrics for this user
+      const { data: metricsData } = await supabase.rpc('get_team_metrics', { p_user_id: userId })
+      const metrics = metricsData && metricsData.length > 0 ? metricsData[0] : null
+      
+      setMember({ ...data, metrics })
     }
     setLoading(false)
   }
@@ -69,7 +72,7 @@ export default function EmployeeProfilePage({ userId, onBack }) {
 
       <EmployeeHeader member={member} />
       
-      <EmployeeStatsCards />
+      <EmployeeStatsCards member={member} />
       
       <EmployeeProfileEditor 
         member={member} 
