@@ -1,46 +1,50 @@
 import { useState, useEffect } from 'react'
 import { supabase } from './lib/supabase'
-import Login from './pages/Login'
 import Dashboard from './pages/Dashboard'
+import Login from './pages/Login'
+import { logActivity } from './lib/activityLogger'
+import { ACTIONS } from './lib/activityActions'
 
 export default function App() {
-  const [role, setRole] = useState(null)
+  const [userProfile, setUserProfile] = useState(null)
   const [loading, setLoading] = useState(true)
 
   // ── SUPABASE AUTHENTICATION & SESSION PERSISTENCE ──
-  // Listens for session changes and fetches the user's full profile from the profiles table.
-  // 'employee' is treated as a valid role (viewer-level) so existing users keep access
-  // while the admin migrates them to proper RBAC roles in the Team page.
   useEffect(() => {
     let mounted = true
 
-    async function fetchRole(userId) {
+    async function fetchProfile(userId) {
       const { data, error } = await supabase
         .from('profiles')
-        .select('role')
+        .select('*')
         .eq('id', userId)
         .single()
       if (mounted) {
-        // Accept any truthy role, including legacy 'employee'.
-        // The Dashboard uses role to conditionally show UI; RLS enforces actual DB permissions.
-        if (data && !error && data.role) setRole(data.role)
-        else setRole(null)
+        if (data && !error && data.role) setUserProfile(data)
+        else setUserProfile(null)
         setLoading(false)
       }
     }
 
     // Check active session on initial load
     supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session?.user) fetchRole(session.user.id)
+      if (session?.user) fetchProfile(session.user.id)
       else if (mounted) setLoading(false)
     })
 
     // Listen for login/logout events
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       if (event === 'SIGNED_OUT' || !session) {
-        setRole(null)
+        setUserProfile(null)
       } else if (session?.user) {
-        fetchRole(session.user.id)
+        fetchProfile(session.user.id)
+        if (event === 'SIGNED_IN') {
+          logActivity({
+            action: ACTIONS.USER_LOGGED_IN,
+            entityType: 'profile',
+            entityId: session.user.id
+          })
+        }
       }
     })
 
@@ -62,8 +66,8 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-bg-primary">
-      {role
-        ? <Dashboard role={role} onLogout={handleLogout} />
+      {userProfile
+        ? <Dashboard userProfile={userProfile} role={userProfile.role} onLogout={handleLogout} />
         : <Login />
       }
     </div>

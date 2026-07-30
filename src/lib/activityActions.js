@@ -22,4 +22,5 @@ export const ACTIONS = {
 
   // Profile operations
   PROFILE_UPDATED: 'PROFILE_UPDATED',
+  USER_LOGGED_IN:  'USER_LOGGED_IN',
 }

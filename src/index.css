@@ -52,3 +52,11 @@ tr:hover td { background: #1a1a1a; }
 select.input-base { cursor: pointer; }
 textarea.input-base { resize: vertical; min-height: 70px; }
 tr:hover .actions { opacity: 1 !important; }
+
+.user-menu-item { display: flex; align-items: center; gap: 8px; width: 100%; padding: 8px 16px; background: transparent; border: none; color: #ededed; font-size: 13px; cursor: pointer; text-align: left; transition: background 0.1s; }
+.user-menu-item:hover:not(:disabled) { background: #2a2a2a; }
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
+}

@@ -8,8 +8,11 @@ import ColManager from '../components/ColManager'
 import ImportModal from '../components/ImportModal'
 import ProjectSelector from '../components/ProjectSelector'
 import ProjectModal from '../components/ProjectModal'
+import ProjectModal from '../components/ProjectModal'
 import TeamPage from '../components/TeamPage'
 import EmployeeProfilePage from './EmployeeProfilePage'
+import UserMenu from '../components/UserMenu'
+import SettingsPage from './SettingsPage'
 import { canManageProjects, isReadOnly } from '../lib/permissions'
 // ── Activity Logging ──
 // Import the logger and action constants to record business events without
@@ -17,7 +20,7 @@ import { canManageProjects, isReadOnly } from '../lib/permissions'
 import { logActivity } from '../lib/activityLogger'
 import { ACTIONS } from '../lib/activityActions'
 
-export default function Dashboard({ role, onLogout }) {
+export default function Dashboard({ userProfile, role, onLogout }) {
   const [projects, setProjects] = useState([])
   const [activeProject, setActiveProject] = useState(null)
   const [projectModalOpen, setProjectModalOpen] = useState(false)
@@ -320,11 +323,10 @@ export default function Dashboard({ role, onLogout }) {
         </div>
       )}
 
+      {/* ── TOP NAV BAR ── */}
       <div className="topbar">
-        <div style={{ display: 'flex', alignItems: 'center' }}>
-          <span style={{ fontSize: '15px', fontWeight: '600', color: '#ededed', letterSpacing: '-0.5px' }}>
-            MR<span style={{ color: '#3ecf8e' }}>.</span>DEVS
-          </span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+          <div style={{ fontWeight: '600', fontSize: '16px', color: '#ededed', letterSpacing: '0.05em' }}>MR.DEVS CRM</div>
           <ProjectSelector 
             role={role}
             projects={projects}
@@ -338,8 +340,8 @@ export default function Dashboard({ role, onLogout }) {
             <span className="badge badge-gray" style={{ marginLeft: '12px' }}>👁️ View Only</span>
           )}
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-          {!isReadOnly(role) && projects.length > 0 && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
+          {!isReadOnly(role) && projects.length > 0 && currentView === 'leads' && (
             <>
               <button onClick={undo} style={{ background: 'none', border: '0.5px solid #2a2a2a', borderRadius: '6px', color: '#a0a0a0', cursor: 'pointer', padding: '5px 10px', fontSize: '13px' }}>
                 ↩ Undo
@@ -349,10 +351,17 @@ export default function Dashboard({ role, onLogout }) {
               </button>
             </>
           )}
-          {projects.length > 0 && (
-            <span style={{ fontSize: '12px', color: '#555' }}>{filteredLeads.length} leads</span>
-          )}
-          <button onClick={onLogout} style={{ background: 'none', border: 'none', color: '#a0a0a0', cursor: 'pointer', fontSize: '13px' }}>Sign out</button>
+          <UserMenu userProfile={userProfile} onLogout={onLogout} onSelectMenu={(view) => {
+            if (view === 'my_profile') {
+              setSelectedUserId(userProfile.id)
+              setCurrentView('employee_profile')
+            } else if (view === 'activity') {
+              setSelectedUserId(userProfile.id)
+              setCurrentView('employee_profile') // Activity is at the bottom of the profile
+            } else {
+              setCurrentView(view)
+            }
+          }} />
         </div>
       </div>
 
@@ -366,21 +375,20 @@ export default function Dashboard({ role, onLogout }) {
           )}
         </div>
       ) : (
-        <div style={{ padding: '24px' }}>
-          <Toolbar
-            role={role}
-            currentView={currentView} setCurrentView={setCurrentView}
-            search={search} setSearch={setSearch}
-            filterPriority={filterPriority} setFilterPriority={setFilterPriority}
-            filterContacted={filterContacted} setFilterContacted={setFilterContacted}
-            filterNumber={filterNumber} setFilterNumber={setFilterNumber}
-            onAddLead={() => { setEditingLead(null); setModalOpen(true) }}
-            onManageColumns={() => setColManagerOpen(true)}
-            onImportClick={() => fileInputRef?.current?.click()}
-          />
-          
-          {currentView === 'leads' ? (
-            <>
+        <>
+          {currentView === 'leads' && (
+            <div style={{ padding: '24px' }}>
+              <Toolbar
+                role={role}
+                currentView={currentView} setCurrentView={setCurrentView}
+                search={search} setSearch={setSearch}
+                filterPriority={filterPriority} setFilterPriority={setFilterPriority}
+                filterContacted={filterContacted} setFilterContacted={setFilterContacted}
+                filterNumber={filterNumber} setFilterNumber={setFilterNumber}
+                onAddLead={() => { setEditingLead(null); setModalOpen(true) }}
+                onManageColumns={() => setColManagerOpen(true)}
+                onImportClick={() => fileInputRef?.current?.click()}
+              />
               <StatsBar leads={leads} />
               <input type="file" accept=".xlsx,.csv" ref={fileInputRef} style={{ display: 'none' }} onChange={handleFileChange} />
               {loading ? (
@@ -388,21 +396,21 @@ export default function Dashboard({ role, onLogout }) {
               ) : (
                 <LeadsTable role={role} leads={filteredLeads} customColumns={customColumns} onEdit={l => { setEditingLead(l); setModalOpen(true) }} onDelete={handleDelete} />
               )}
-            </>
-          ) : currentView === 'team' ? (
-            <TeamPage 
-              onViewProfile={(id) => {
-                setSelectedUserId(id)
-                setCurrentView('employee_profile')
-              }} 
-            />
-          ) : currentView === 'employee_profile' && selectedUserId ? (
-            <EmployeeProfilePage 
-              userId={selectedUserId} 
-              onBack={() => setCurrentView('team')} 
-            />
-          ) : null}
-        </div>
+            </div>
+          )}
+          
+          {currentView === 'team' && (
+            <TeamPage onSelectMember={(id) => { setSelectedUserId(id); setCurrentView('employee_profile') }} />
+          )}
+          
+          {currentView === 'employee_profile' && (
+            <EmployeeProfilePage userId={selectedUserId} onBack={() => setCurrentView('leads')} />
+          )}
+
+          {currentView === 'settings' && (
+            <SettingsPage userProfile={userProfile} />
+          )}
+        </>
       )}
 
       {modalOpen && <LeadModal lead={editingLead} customColumns={customColumns} onClose={() => setModalOpen(false)} onSave={handleSave} />}

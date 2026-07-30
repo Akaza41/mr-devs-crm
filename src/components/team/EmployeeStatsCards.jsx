@@ -9,6 +9,7 @@ export default function EmployeeStatsCards({ member }) {
   // Fallback defaults if no activity logs exist yet
   const leadsAdded = metrics?.leads_added || 0
   const leadsEdited = metrics?.leads_edited || 0
+  const projectsWorkedOn = metrics?.projects_worked_on || 0
   const totalActions = metrics?.total_actions || 0
   
   // Calculate if online (active within 15 minutes)
@@ -16,10 +17,10 @@ export default function EmployeeStatsCards({ member }) {
   const statusText = isOnline ? 'Online Now' : (metrics?.last_active ? new Date(metrics.last_active).toLocaleString() : 'Never')
 
   const stats = [
-    { label: 'Leads Added', value: leadsAdded, subtext: 'Total leads created' },
-    { label: 'Leads Edited', value: leadsEdited, subtext: 'Total leads updated' },
-    { label: 'Total Actions', value: totalActions, subtext: 'All CRM activities' },
-    { label: 'Last Active', value: isOnline ? 'Active' : 'Offline', subtext: statusText, highlight: isOnline }
+    { label: 'Leads Created', value: leadsAdded, subtext: 'Total leads sourced' },
+    { label: 'Leads Updated', value: leadsEdited, subtext: 'Total leads modified' },
+    { label: 'Projects Worked On', value: projectsWorkedOn, subtext: 'Distinct projects' },
+    { label: 'Total Activity', value: totalActions, subtext: 'All CRM actions' }
   ]
 
   return (

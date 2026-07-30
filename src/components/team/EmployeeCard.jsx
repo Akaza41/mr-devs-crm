@@ -60,22 +60,16 @@ export default function EmployeeCard({ member, onViewProfile }) {
       {/* Metrics Grid (Populated from Phase 4 activity logs) */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginTop: '8px', padding: '12px', background: '#141414', borderRadius: '8px', border: '0.5px solid #222' }}>
         <div>
-          <div style={{ fontSize: '11px', color: '#555', textTransform: 'uppercase' }}>Leads Added</div>
+          <div style={{ fontSize: '11px', color: '#555', textTransform: 'uppercase' }}>Leads Created</div>
           <div style={{ fontSize: '13px', color: '#a0a0a0', fontWeight: '500', marginTop: '2px' }}>{member.metrics?.leads_added || 0}</div>
         </div>
         <div>
-          <div style={{ fontSize: '11px', color: '#555', textTransform: 'uppercase' }}>Leads Edited</div>
+          <div style={{ fontSize: '11px', color: '#555', textTransform: 'uppercase' }}>Leads Updated</div>
           <div style={{ fontSize: '13px', color: '#a0a0a0', fontWeight: '500', marginTop: '2px' }}>{member.metrics?.leads_edited || 0}</div>
         </div>
-        <div>
-          <div style={{ fontSize: '11px', color: '#555', textTransform: 'uppercase' }}>Total Actions</div>
-          <div style={{ fontSize: '13px', color: '#a0a0a0', fontWeight: '500', marginTop: '2px' }}>{member.metrics?.total_actions || 0}</div>
-        </div>
-        <div>
-          <div style={{ fontSize: '11px', color: '#555', textTransform: 'uppercase' }}>Last Active</div>
-          <div style={{ fontSize: '13px', color: '#a0a0a0', fontWeight: '500', marginTop: '2px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-            {member.metrics?.last_active ? new Date(member.metrics.last_active).toLocaleDateString() : 'Never'}
-          </div>
+        <div style={{ gridColumn: 'span 2' }}>
+          <div style={{ fontSize: '11px', color: '#555', textTransform: 'uppercase' }}>Total Activity</div>
+          <div style={{ fontSize: '13px', color: '#a0a0a0', fontWeight: '500', marginTop: '2px' }}>{member.metrics?.total_actions || 0} actions recorded</div>
         </div>
       </div>
       {/* Actions */}

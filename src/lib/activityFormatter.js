@@ -65,6 +65,11 @@ export function formatActivityDetails(log) {
         title: 'Profile Updated',
         details: 'Updated profile details'
       }
+    case ACTIONS.USER_LOGGED_IN:
+      return {
+        title: 'Logged In',
+        details: 'Started a new session'
+      }
     default:
       // Fallback for any future or unrecognized actions
       return {
