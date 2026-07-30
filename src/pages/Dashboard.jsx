@@ -66,11 +66,32 @@ export default function Dashboard({ userProfile, role, onLogout }) {
   }
 
   useEffect(() => {
+    let ignore = false
+
+    async function fetchLeads() {
+      if (!activeProject) return
+      setLoading(true)
+      const { data, error } = await supabase.from('leads').select('*').eq('project_id', activeProject.id)
+      if (!error && !ignore) {
+        const order = { High: 0, Medium: 1, Low: 2 }
+        const sorted = data.sort((a, b) => {
+          if (order[a.priority] !== order[b.priority]) return order[a.priority] - order[b.priority]
+          return (b.rating || 0) - (a.rating || 0)
+        })
+        setLeads(sorted)
+        leadsRef.current = sorted
+        historyRef.current = []
+        futureRef.current = []
+      }
+      if (!ignore) setLoading(false)
+    }
+
     if (activeProject) {
       localStorage.setItem('mrdevs_last_project', activeProject.id)
       fetchLeads()
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+
+    return () => { ignore = true }
   }, [activeProject])
 
   async function fetchCustomColumns() {
@@ -84,24 +105,6 @@ export default function Dashboard({ userProfile, role, onLogout }) {
       setImportFile(file)
       e.target.value = ''
     }
-  }
-
-  async function fetchLeads() {
-    if (!activeProject) return
-    setLoading(true)
-    const { data, error } = await supabase.from('leads').select('*').eq('project_id', activeProject.id)
-    if (!error) {
-      const order = { High: 0, Medium: 1, Low: 2 }
-      const sorted = data.sort((a, b) => {
-        if (order[a.priority] !== order[b.priority]) return order[a.priority] - order[b.priority]
-        return (b.rating || 0) - (a.rating || 0)
-      })
-      setLeads(sorted)
-      leadsRef.current = sorted
-      historyRef.current = []
-      futureRef.current = []
-    }
-    setLoading(false)
   }
 
   useEffect(() => {
