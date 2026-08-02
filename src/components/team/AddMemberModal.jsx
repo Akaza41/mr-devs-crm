@@ -5,7 +5,7 @@ export default function AddMemberModal({ onClose, onSuccess }) {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [fullName, setFullName] = useState('')
-  const [role, setRole] = useState('employee') // Default role
+  const [role, setRole] = useState('sales') // Default role
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
 
@@ -123,8 +123,10 @@ export default function AddMemberModal({ onClose, onSuccess }) {
               onChange={e => setRole(e.target.value)}
               style={{ width: '100%', background: '#0f0f0f', border: '0.5px solid #333', borderRadius: '8px', padding: '10px 12px', color: '#ededed', fontSize: '14px', outline: 'none', appearance: 'none' }}
             >
+              <option value="sales">Sales Rep</option>
               <option value="admin">Admin</option>
-              <option value="employee">Employee</option>
+              <option value="manager">Manager</option>
+              <option value="lead generator">Lead Generator</option>
               <option value="viewer">Viewer</option>
             </select>
           </div>

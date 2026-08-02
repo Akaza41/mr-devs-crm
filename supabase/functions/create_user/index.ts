@@ -26,10 +26,11 @@ serve(async (req) => {
       return new Response(JSON.stringify({ error: 'Missing required fields' }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
     }
 
-    // Validate role explicitly to match the 3 allowed roles
-    const validRoles = ['admin', 'employee', 'viewer']
+    // Validate role explicitly to match the allowed roles defined in src/lib/permissions.js
+    // MUST stay in sync with src/lib/permissions.js (SINGLE SOURCE OF TRUTH)
+    const validRoles = ['admin', 'manager', 'sales', 'lead generator', 'viewer']
     if (!validRoles.includes(role)) {
-      return new Response(JSON.stringify({ error: 'Invalid role specified' }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
+      return new Response(JSON.stringify({ error: 'Invalid role specified. Must be one of: ' + validRoles.join(', ') }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
     }
 
     // 3. Initialize Admin Client (uses service_role key to bypass RLS)

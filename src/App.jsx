@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { supabase } from './lib/supabase'
 import Dashboard from './pages/Dashboard'
-import Login from './pages/Login'
+import AuthGuard from './components/AuthGuard'
 import { logActivity } from './lib/activityLogger'
 import { ACTIONS } from './lib/activityActions'
 
@@ -36,6 +36,7 @@ export default function App() {
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       if (event === 'SIGNED_OUT' || !session) {
         setUserProfile(null)
+        if (mounted) setLoading(false)
       } else if (session?.user) {
         fetchProfile(session.user.id)
         if (event === 'SIGNED_IN') {
@@ -57,19 +58,17 @@ export default function App() {
   // ── LOGOUT LOGIC ──
   // Uses Supabase's native signOut which clears the secure session token
   const handleLogout = async () => {
+    setLoading(true)
     await supabase.auth.signOut()
-  }
-
-  if (loading) {
-    return <div className="min-h-screen bg-bg-primary flex items-center justify-center" style={{ color: '#ededed' }}>Loading...</div>
+    setUserProfile(null)
+    setLoading(false)
   }
 
   return (
     <div className="min-h-screen bg-bg-primary">
-      {userProfile
-        ? <Dashboard userProfile={userProfile} role={userProfile.role} onLogout={handleLogout} />
-        : <Login />
-      }
+      <AuthGuard loading={loading} userProfile={userProfile}>
+        <Dashboard userProfile={userProfile} role={userProfile?.role} onLogout={handleLogout} />
+      </AuthGuard>
     </div>
   )
 }
