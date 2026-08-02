@@ -1,5 +1,14 @@
-import { serve } from "https://deno.land/std@0.177.0/http/server.ts"
+// @ts-ignore: Deno HTTPS URL import resolution
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3"
+
+
+// Declare Deno namespace for IDE TypeScript language server
+declare const Deno: {
+  env: {
+    get(key: string): string | undefined
+  }
+  serve(handler: (req: Request) => Promise<Response> | Response): void
+}
 
 // ── CORS HEADERS ──
 const corsHeaders = {
@@ -7,7 +16,7 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
-serve(async (req) => {
+Deno.serve(async (req) => {
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders })
