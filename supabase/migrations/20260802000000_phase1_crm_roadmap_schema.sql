@@ -15,6 +15,7 @@ ALTER TABLE profiles ADD CONSTRAINT profiles_role_check
 -- 2. EXTEND LEADS FOR SALES REP ASSIGNMENT, FLEXIBLE TITLES & JSONB CUSTOM FIELDS
 ALTER TABLE leads 
   ADD COLUMN IF NOT EXISTS lead_name TEXT, -- Universal lead title fallback (aliased to hospital_name)
+  ADD COLUMN IF NOT EXISTS stage TEXT,
   ADD COLUMN IF NOT EXISTS assigned_to UUID REFERENCES profiles(id) ON DELETE SET NULL,
   ADD COLUMN IF NOT EXISTS created_by UUID REFERENCES profiles(id) ON DELETE SET NULL,
   ADD COLUMN IF NOT EXISTS custom_fields JSONB DEFAULT '{}'::jsonb,
@@ -34,7 +35,7 @@ CREATE TABLE IF NOT EXISTS chat_channels (
   name TEXT NOT NULL,
   type TEXT CHECK (type IN ('team', 'lead_thread', 'direct')) DEFAULT 'team',
   project_id UUID REFERENCES projects(id) ON DELETE CASCADE,
-  lead_id BIGINT REFERENCES leads(id) ON DELETE CASCADE,
+  lead_id UUID REFERENCES leads(id) ON DELETE CASCADE,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
@@ -61,7 +62,7 @@ CREATE INDEX IF NOT EXISTS idx_channel_members_user ON channel_members(user_id);
 -- 4. OUTREACH EVENTS TABLE (CHROME EXTENSION & INTEGRATIONS)
 CREATE TABLE IF NOT EXISTS outreach_events (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  lead_id BIGINT REFERENCES leads(id) ON DELETE CASCADE,
+  lead_id UUID REFERENCES leads(id) ON DELETE CASCADE,
   user_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
   channel TEXT NOT NULL CHECK (channel IN ('gmail', 'linkedin', 'facebook', 'manual_call', 'other')),
   event_type TEXT NOT NULL CHECK (event_type IN ('message_sent', 'reply_received', 'email_opened', 'link_clicked', 'call_logged')),
