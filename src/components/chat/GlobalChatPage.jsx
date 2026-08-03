@@ -21,9 +21,17 @@ export default function GlobalChatPage({ currentUserProfile, onBack }) {
   const [loading, setLoading] = useState(true)
   const [messagesLoading, setMessagesLoading] = useState(false)
   const [toast, setToast] = useState('')
+
+  // ── GROUP & CHANNEL CREATION MODAL STATE ──
   const [showCreateModal, setShowCreateModal] = useState(false)
+  const [createType, setCreateType] = useState('group') // 'group' | 'team'
   const [newChannelName, setNewChannelName] = useState('')
+  const [selectedMemberIds, setSelectedMemberIds] = useState([])
   const [creatingChannel, setCreatingChannel] = useState(false)
+
+  // ── MENTIONS INBOX STATE ──
+  const [unreadMentions, setUnreadMentions] = useState([])
+  const [showMentionsInbox, setShowMentionsInbox] = useState(false)
 
   // ── @MENTIONS AUTOCOMPLETE STATE ──
   const [mentionQuery, setMentionQuery] = useState(null)
@@ -40,7 +48,7 @@ export default function GlobalChatPage({ currentUserProfile, onBack }) {
     messagesEndRef.current?.scrollIntoView({ behavior: smooth ? 'smooth' : 'auto' })
   }
 
-  // ── 1. FETCH TEAM MEMBERS FOR DMS & MENTIONS ──
+  // ── 1. FETCH TEAM MEMBERS ──
   const fetchTeamMembers = useCallback(async () => {
     const { data } = await supabase
       .from('profiles')
@@ -53,10 +61,20 @@ export default function GlobalChatPage({ currentUserProfile, onBack }) {
     }
   }, [])
 
-  // ── 2. FETCH & CACHE CHANNELS ──
+  // ── 2. FETCH UNREAD MENTIONS FOR INBOX ──
+  const fetchUnreadMentions = useCallback(async () => {
+    if (!currentUserProfile?.id) return
+    const { data } = await supabase.rpc('get_unread_mentions', { p_user_id: currentUserProfile.id })
+    if (data) {
+      setUnreadMentions(data)
+    }
+  }, [currentUserProfile])
+
+  // ── 3. FETCH CHANNELS ──
   const fetchUserChannels = useCallback(async () => {
     setLoading(true)
     await fetchTeamMembers()
+    await fetchUnreadMentions()
 
     const { data, error } = await supabase
       .from('chat_channels')
@@ -67,7 +85,6 @@ export default function GlobalChatPage({ currentUserProfile, onBack }) {
     if (!error && data && data.length > 0) {
       channelList = data
     } else {
-      // Fallback default channels
       channelList = [
         { id: 'general-channel-id', name: 'general', type: 'team' },
         { id: 'announcements-channel-id', name: 'announcements', type: 'team' }
@@ -89,27 +106,39 @@ export default function GlobalChatPage({ currentUserProfile, onBack }) {
     })
 
     setLoading(false)
-  }, [fetchTeamMembers])
+  }, [fetchTeamMembers, fetchUnreadMentions])
 
   useEffect(() => {
     fetchUserChannels()
   }, [fetchUserChannels])
 
-  // ── 3. FETCH MESSAGES & MEMBERS FOR ACTIVE CHANNEL ──
+  // ── 4. MARK CHANNEL AS READ ──
+  const markChannelAsRead = useCallback(async (channelId) => {
+    if (!currentUserProfile?.id || !channelId) return
+    await supabase
+      .from('channel_members')
+      .upsert({
+        channel_id: channelId,
+        user_id: currentUserProfile.id,
+        last_read_at: new Date().toISOString()
+      }, { onConflict: 'channel_id,user_id' })
+
+    fetchUnreadMentions()
+  }, [currentUserProfile, fetchUnreadMentions])
+
+  // ── 5. FETCH MESSAGES & MEMBERS FOR ACTIVE CHANNEL ──
   const fetchChannelData = useCallback(async (channelId) => {
     if (!channelId) return
     setMessagesLoading(true)
 
-    // Load cached messages first for instant response
     try {
       const cached = localStorage.getItem(`mrdevs_chat_messages_${channelId}`)
       if (cached) setMessages(JSON.parse(cached))
     } catch {}
 
-    // Fetch fresh messages
     const { data: msgData } = await supabase
       .from('chat_messages')
-      .select('id, channel_id, sender_id, content, created_at, sender:profiles(id, full_name, avatar_url, email)')
+      .select('id, channel_id, sender_id, content, mentioned_user_ids, created_at, sender:profiles(id, full_name, avatar_url, email)')
       .eq('channel_id', channelId)
       .order('created_at', { ascending: true })
 
@@ -121,7 +150,6 @@ export default function GlobalChatPage({ currentUserProfile, onBack }) {
       } catch {}
     }
 
-    // Fetch channel members
     const { data: memberData } = await supabase
       .from('channel_members')
       .select('user_id, profile:profiles(id, full_name, avatar_url, role)')
@@ -133,9 +161,10 @@ export default function GlobalChatPage({ currentUserProfile, onBack }) {
       setMembers(teamMembers)
     }
 
+    markChannelAsRead(channelId)
     setMessagesLoading(false)
     setTimeout(() => scrollToBottom(false), 50)
-  }, [teamMembers])
+  }, [teamMembers, markChannelAsRead])
 
   useEffect(() => {
     if (activeChannel?.id) {
@@ -179,6 +208,7 @@ export default function GlobalChatPage({ currentUserProfile, onBack }) {
               return [...prev, { ...newMsg, sender, status: 'sent' }]
             })
 
+            markChannelAsRead(activeChannel.id)
             setTimeout(() => scrollToBottom(true), 50)
           }
         )
@@ -188,38 +218,30 @@ export default function GlobalChatPage({ currentUserProfile, onBack }) {
         supabase.removeChannel(channel)
       }
     }
-  }, [activeChannel, fetchChannelData, currentUserProfile])
+  }, [activeChannel, fetchChannelData, currentUserProfile, markChannelAsRead])
 
-  // ── 4. OPEN OR CREATE DIRECT MESSAGE CHANNEL (1-on-1 CHAT) ──
+  // ── 6. DIRECT MESSAGES (1-ON-1 CHAT) ──
   const handleOpenDirectChat = async (targetUser) => {
     if (!currentUserProfile || targetUser.id === currentUserProfile.id) return
 
-    // Find existing direct channel between current user and target user
     const directChannelName = [currentUserProfile.id, targetUser.id].sort().join('_')
-
     let dmChannel = channels.find(c => c.type === 'direct' && c.name === directChannelName)
 
     if (!dmChannel) {
-      // Create new direct channel in Supabase
       const { data, error } = await supabase
         .from('chat_channels')
-        .insert({
-          name: directChannelName,
-          type: 'direct'
-        })
+        .insert({ name: directChannelName, type: 'direct' })
         .select('*')
         .single()
 
       if (!error && data) {
         dmChannel = data
-        // Add both members to channel_members
         await supabase.from('channel_members').insert([
           { channel_id: data.id, user_id: currentUserProfile.id },
           { channel_id: data.id, user_id: targetUser.id }
         ])
         setChannels(prev => [...prev, data])
       } else {
-        // Fallback local direct channel
         dmChannel = {
           id: `dm_${directChannelName}`,
           name: directChannelName,
@@ -233,8 +255,23 @@ export default function GlobalChatPage({ currentUserProfile, onBack }) {
     setActiveChannel(dmChannel)
   }
 
-  // ── 5. OPTIMISTIC MESSAGE SENDING ──
-  const sendMessagePayload = async (messageText, tempId) => {
+  // ── 7. RESOLVE MENTIONED USER IDS AND SEND MESSAGE ──
+  const parseMentionedUserIds = (messageText) => {
+    if (!messageText) return []
+    const ids = new Set()
+    
+    // Check for @Name or @Email matches against teamMembers
+    teamMembers.forEach(member => {
+      const name = (member.full_name || member.email.split('@')[0]).toLowerCase()
+      if (messageText.toLowerCase().includes(`@${name}`)) {
+        ids.add(member.id)
+      }
+    })
+
+    return Array.from(ids)
+  }
+
+  const sendMessagePayload = async (messageText, tempId, mentionedIds) => {
     if (!activeChannel || !currentUserProfile) return
 
     const { data, error } = await supabase
@@ -242,7 +279,8 @@ export default function GlobalChatPage({ currentUserProfile, onBack }) {
       .insert({
         channel_id: activeChannel.id,
         sender_id: currentUserProfile.id,
-        content: messageText
+        content: messageText,
+        mentioned_user_ids: mentionedIds
       })
       .select('*, sender:profiles(id, full_name, avatar_url, email)')
       .single()
@@ -251,7 +289,7 @@ export default function GlobalChatPage({ currentUserProfile, onBack }) {
       setMessages(prev => prev.map(m => m.id === tempId ? { ...m, status: 'error', errorMsg: error.message } : m))
       showToast('Failed to send message: ' + error.message)
     } else {
-      const serverMsg = data || { id: tempId, content: messageText, created_at: new Date().toISOString(), status: 'sent', sender: currentUserProfile }
+      const serverMsg = data || { id: tempId, content: messageText, mentioned_user_ids: mentionedIds, created_at: new Date().toISOString(), status: 'sent', sender: currentUserProfile }
       setMessages(prev => {
         const next = prev.map(m => m.id === tempId ? { ...serverMsg, status: 'sent' } : m)
         try {
@@ -267,6 +305,8 @@ export default function GlobalChatPage({ currentUserProfile, onBack }) {
     if (!newMessage.trim() || !activeChannel || !currentUserProfile) return
 
     const messageText = newMessage.trim()
+    const mentionedIds = parseMentionedUserIds(messageText)
+
     setNewMessage('')
     setMentionQuery(null)
 
@@ -276,6 +316,7 @@ export default function GlobalChatPage({ currentUserProfile, onBack }) {
       channel_id: activeChannel.id,
       sender_id: currentUserProfile.id,
       content: messageText,
+      mentioned_user_ids: mentionedIds,
       created_at: new Date().toISOString(),
       status: 'sending',
       sender: currentUserProfile
@@ -290,10 +331,10 @@ export default function GlobalChatPage({ currentUserProfile, onBack }) {
     })
 
     setTimeout(() => scrollToBottom(true), 50)
-    sendMessagePayload(messageText, tempId)
+    sendMessagePayload(messageText, tempId, mentionedIds)
   }
 
-  // ── 6. MENTIONS AUTOCOMPLETE LOGIC ──
+  // ── 8. MENTIONS AUTOCOMPLETE LOGIC ──
   const handleInputChange = (e) => {
     const val = e.target.value
     setNewMessage(val)
@@ -334,7 +375,6 @@ export default function GlobalChatPage({ currentUserProfile, onBack }) {
     setTimeout(() => inputRef.current?.focus(), 50)
   }
 
-  // Render message content with styled @Mentions
   const renderMessageContent = (content) => {
     if (!content) return null
     const parts = content.split(/(@[\w\s]+)/g)
@@ -361,38 +401,61 @@ export default function GlobalChatPage({ currentUserProfile, onBack }) {
     })
   }
 
-  // ── 7. CREATE NEW GROUP CHANNEL ──
-  const handleCreateChannel = async (e) => {
+  // ── 9. CREATE MULTI-MEMBER GROUP CHAT OR PUBLIC CHANNEL ──
+  const handleCreateChannelOrGroup = async (e) => {
     e.preventDefault()
     if (!newChannelName.trim()) return
 
     const cleanName = newChannelName.toLowerCase().replace(/[^a-z0-9_-]/g, '-').trim()
     setCreatingChannel(true)
 
+    const channelType = createType === 'group' ? 'group' : 'team'
+
     const { data, error } = await supabase
       .from('chat_channels')
-      .insert({ name: cleanName, type: 'team' })
+      .insert({ name: cleanName, type: channelType })
       .select('*')
       .single()
 
     if (!error && data) {
+      // Add all selected members + current user to channel_members
+      const allMemberIds = new Set([...selectedMemberIds, currentUserProfile.id])
+      const memberRows = Array.from(allMemberIds).map(uid => ({
+        channel_id: data.id,
+        user_id: uid
+      }))
+
+      await supabase.from('channel_members').insert(memberRows)
+
       setChannels(prev => [...prev, data])
       setActiveChannel(data)
       setShowCreateModal(false)
       setNewChannelName('')
-      showToast(`Channel #${cleanName} created!`)
+      setSelectedMemberIds([])
+      showToast(`${createType === 'group' ? 'Group Chat' : 'Channel'} #${cleanName} created!`)
     } else {
-      showToast('Error creating channel: ' + (error?.message || 'Failed'))
+      showToast('Error creating group: ' + (error?.message || 'Failed'))
     }
     setCreatingChannel(false)
   }
 
-  // Group channels vs Direct Message channels
-  const groupChannels = channels.filter(c => c.type !== 'direct' && c.name.toLowerCase().includes(channelSearch.toLowerCase()))
+  // Jump to channel from Mentions Inbox
+  const handleJumpToMention = (mentionItem) => {
+    const targetChan = channels.find(c => c.id === mentionItem.channel_id)
+    if (targetChan) {
+      setActiveChannel(targetChan)
+      setShowMentionsInbox(false)
+    } else {
+      showToast('Channel not found')
+    }
+  }
+
+  // Filter channels into categories
+  const publicChannels = channels.filter(c => c.type === 'team' && c.name.toLowerCase().includes(channelSearch.toLowerCase()))
+  const groupChats = channels.filter(c => c.type === 'group' && c.name.toLowerCase().includes(channelSearch.toLowerCase()))
   const otherTeamMembers = teamMembers.filter(m => m.id !== currentUserProfile?.id && (m.full_name || m.email).toLowerCase().includes(channelSearch.toLowerCase()))
   const filteredMessages = messages.filter(m => !messageSearch || m.content.toLowerCase().includes(messageSearch.toLowerCase()))
 
-  // Compute label for active channel header
   const isDirect = activeChannel?.type === 'direct'
   const activeDirectUser = isDirect ? (activeChannel.targetUser || teamMembers.find(m => activeChannel.name?.includes(m.id))) : null
 
@@ -414,7 +477,7 @@ export default function GlobalChatPage({ currentUserProfile, onBack }) {
         </div>
       )}
 
-      {/* ── SIDEBAR: CHANNELS & DIRECT MESSAGES ── */}
+      {/* ── SIDEBAR: CHANNELS, GROUPS & DIRECT MESSAGES ── */}
       <div style={{
         background: '#121212',
         borderRight: '0.5px solid #232323',
@@ -422,32 +485,120 @@ export default function GlobalChatPage({ currentUserProfile, onBack }) {
         flexDirection: 'column'
       }}>
         
-        {/* Sidebar Header */}
+        {/* Sidebar Header with Mentions Inbox Bell */}
         <div style={{ padding: '16px', borderBottom: '0.5px solid #232323', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <div>
             <h3 className="font-headline" style={{ fontSize: '15px', fontWeight: '700', color: '#f5f5f0', margin: 0 }}>Team Chat</h3>
-            <span style={{ fontSize: '11px', color: '#8a8a85' }}>Group & 1-on-1 DMs</span>
+            <span style={{ fontSize: '11px', color: '#8a8a85' }}>Groups, DMs & Mentions</span>
           </div>
-          <button
-            onClick={() => setShowCreateModal(true)}
-            style={{
-              background: '#232323',
-              border: '0.5px solid #333',
-              color: '#3ecf8e',
-              borderRadius: '6px',
-              width: '28px',
-              height: '28px',
-              fontSize: '16px',
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              fontWeight: 'bold'
-            }}
-            title="Create New Channel"
-          >
-            +
-          </button>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            {/* Mentions Inbox Bell */}
+            <div style={{ position: 'relative' }}>
+              <button
+                onClick={() => setShowMentionsInbox(!showMentionsInbox)}
+                style={{
+                  background: unreadMentions.length > 0 ? 'rgba(62,207,142,0.15)' : '#232323',
+                  border: unreadMentions.length > 0 ? '0.5px solid #3ecf8e' : '0.5px solid #333',
+                  color: unreadMentions.length > 0 ? '#3ecf8e' : '#8a8a85',
+                  borderRadius: '6px',
+                  width: '28px',
+                  height: '28px',
+                  fontSize: '13px',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  position: 'relative'
+                }}
+                title="Mentions Inbox"
+              >
+                🔔
+                {unreadMentions.length > 0 && (
+                  <span style={{ position: 'absolute', top: '-4px', right: '-4px', background: '#3ecf8e', color: '#0a0a0a', fontSize: '9px', fontWeight: '800', width: '14px', height: '14px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    {unreadMentions.length}
+                  </span>
+                )}
+              </button>
+
+              {/* Mentions Inbox Dropdown */}
+              {showMentionsInbox && (
+                <div style={{
+                  position: 'absolute',
+                  top: '34px',
+                  right: '0',
+                  width: '280px',
+                  background: '#161616',
+                  border: '0.5px solid #3ecf8e',
+                  borderRadius: '8px',
+                  boxShadow: '0 8px 24px rgba(0,0,0,0.5)',
+                  zIndex: 120,
+                  padding: '8px',
+                  maxHeight: '260px',
+                  overflowY: 'auto'
+                }}>
+                  <div style={{ fontSize: '11px', fontWeight: '700', color: '#8a8a85', padding: '4px 8px 8px 8px', borderBottom: '0.5px solid #232323', textTransform: 'uppercase' }}>
+                    Unread Mentions ({unreadMentions.length})
+                  </div>
+
+                  {unreadMentions.length === 0 ? (
+                    <div style={{ color: '#8a8a85', fontSize: '12px', padding: '16px', textAlign: 'center' }}>
+                      No unread mentions!
+                    </div>
+                  ) : (
+                    unreadMentions.map(m => (
+                      <button
+                        key={m.message_id}
+                        onClick={() => handleJumpToMention(m)}
+                        style={{
+                          width: '100%',
+                          textAlign: 'left',
+                          background: '#232323',
+                          border: 'none',
+                          borderRadius: '6px',
+                          padding: '8px',
+                          margin: '6px 0',
+                          cursor: 'pointer',
+                          display: 'flex',
+                          flexDirection: 'column',
+                          gap: '2px'
+                        }}
+                      >
+                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', color: '#3ecf8e', fontWeight: '600' }}>
+                          <span>@{m.sender_name} in #{m.channel_name}</span>
+                          <span style={{ color: '#666', fontWeight: '400' }}>{new Date(m.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                        </div>
+                        <div style={{ fontSize: '12px', color: '#f5f5f0', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                          {m.content}
+                        </div>
+                      </button>
+                    ))
+                  )}
+                </div>
+              )}
+            </div>
+
+            <button
+              onClick={() => setShowCreateModal(true)}
+              style={{
+                background: '#232323',
+                border: '0.5px solid #333',
+                color: '#3ecf8e',
+                borderRadius: '6px',
+                width: '28px',
+                height: '28px',
+                fontSize: '16px',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                fontWeight: 'bold'
+              }}
+              title="Create Channel or Group"
+            >
+              +
+            </button>
+          </div>
         </div>
 
         {/* Filter Input */}
@@ -462,17 +613,17 @@ export default function GlobalChatPage({ currentUserProfile, onBack }) {
           />
         </div>
 
-        {/* Channels & DMs Scroll List */}
+        {/* Channels, Groups & DMs Scroll List */}
         <div style={{ flex: 1, overflowY: 'auto', padding: '12px 8px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
           
-          {/* Section: # GROUP CHANNELS */}
+          {/* Section 1: # PUBLIC CHANNELS */}
           <div>
             <div style={{ padding: '0 8px 6px 8px', fontSize: '10px', fontWeight: '700', color: '#8a8a85', letterSpacing: '0.08em', textTransform: 'uppercase' }}>
               # Channels
             </div>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-              {groupChannels.map(channel => {
+              {publicChannels.map(channel => {
                 const isActive = activeChannel?.id === channel.id
                 return (
                   <button
@@ -485,30 +636,65 @@ export default function GlobalChatPage({ currentUserProfile, onBack }) {
                       border: 'none',
                       borderLeft: isActive ? '3px solid #3ecf8e' : '3px solid transparent',
                       borderRadius: '6px',
-                      padding: '7px 10px',
+                      padding: '6px 10px',
                       color: isActive ? '#3ecf8e' : '#8a8a85',
                       fontSize: '13px',
                       fontWeight: isActive ? '600' : '400',
                       cursor: 'pointer',
                       display: 'flex',
                       alignItems: 'center',
-                      gap: '8px',
-                      transition: 'background 0.15s'
+                      gap: '8px'
                     }}
-                    onMouseOver={e => !isActive && (e.currentTarget.style.background = '#1a1a1a')}
-                    onMouseOut={e => !isActive && (e.currentTarget.style.background = 'transparent')}
                   >
                     <span style={{ color: isActive ? '#3ecf8e' : '#666', fontWeight: 'bold' }}>#</span>
-                    <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                      {channel.name}
-                    </span>
+                    <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{channel.name}</span>
                   </button>
                 )
               })}
             </div>
           </div>
 
-          {/* Section: 💬 DIRECT MESSAGES (1-on-1 CHATS) */}
+          {/* Section 2: 👥 GROUP CHATS */}
+          {groupChats.length > 0 && (
+            <div>
+              <div style={{ padding: '0 8px 6px 8px', fontSize: '10px', fontWeight: '700', color: '#8a8a85', letterSpacing: '0.08em', textTransform: 'uppercase' }}>
+                👥 Group Chats
+              </div>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                {groupChats.map(channel => {
+                  const isActive = activeChannel?.id === channel.id
+                  return (
+                    <button
+                      key={channel.id}
+                      onClick={() => setActiveChannel(channel)}
+                      style={{
+                        width: '100%',
+                        textAlign: 'left',
+                        background: isActive ? '#232323' : 'transparent',
+                        border: 'none',
+                        borderLeft: isActive ? '3px solid #3ecf8e' : '3px solid transparent',
+                        borderRadius: '6px',
+                        padding: '6px 10px',
+                        color: isActive ? '#3ecf8e' : '#8a8a85',
+                        fontSize: '12px',
+                        fontWeight: isActive ? '600' : '400',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '8px'
+                      }}
+                    >
+                      <span style={{ color: '#3ecf8e' }}>👥</span>
+                      <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{channel.name}</span>
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* Section 3: 💬 DIRECT MESSAGES */}
           <div>
             <div style={{ padding: '0 8px 6px 8px', fontSize: '10px', fontWeight: '700', color: '#8a8a85', letterSpacing: '0.08em', textTransform: 'uppercase' }}>
               💬 Direct Messages
@@ -536,11 +722,8 @@ export default function GlobalChatPage({ currentUserProfile, onBack }) {
                       cursor: 'pointer',
                       display: 'flex',
                       alignItems: 'center',
-                      gap: '8px',
-                      transition: 'background 0.15s'
+                      gap: '8px'
                     }}
-                    onMouseOver={e => !isSelectedDM && (e.currentTarget.style.background = '#1a1a1a')}
-                    onMouseOut={e => !isSelectedDM && (e.currentTarget.style.background = 'transparent')}
                   >
                     <div style={{ position: 'relative', width: '22px', height: '22px', borderRadius: '50%', background: '#2a2a2a', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '10px', flexShrink: 0 }}>
                       {member.avatar_url ? (
@@ -564,7 +747,7 @@ export default function GlobalChatPage({ currentUserProfile, onBack }) {
 
       </div>
 
-      {/* ── MAIN CHAT VIEW ── */}
+      {/* ── MAIN CHAT STREAM ── */}
       <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: '#0a0a0a' }}>
         
         {/* Header Bar */}
@@ -584,7 +767,7 @@ export default function GlobalChatPage({ currentUserProfile, onBack }) {
             )}
             <div>
               <h3 className="font-headline" style={{ fontSize: '15px', fontWeight: '700', color: '#f5f5f0', margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <span style={{ color: '#3ecf8e' }}>{isDirect ? '💬' : '#'}</span>
+                <span style={{ color: '#3ecf8e' }}>{isDirect ? '💬' : activeChannel?.type === 'group' ? '👥' : '#'}</span>
                 {isDirect ? (activeDirectUser?.full_name || activeDirectUser?.email || 'Direct Message') : (activeChannel?.name || 'select-channel')}
               </h3>
               <span style={{ fontSize: '11px', color: '#8a8a85' }}>
@@ -616,12 +799,11 @@ export default function GlobalChatPage({ currentUserProfile, onBack }) {
               <div style={{ fontSize: '12px', color: '#666' }}>Type a message below or mention `@member` to get started!</div>
             </div>
           ) : (
-            filteredMessages.map((msg, index) => {
+            filteredMessages.map((msg) => {
               const sender = msg.sender || (msg.sender_id === currentUserProfile?.id ? currentUserProfile : null)
               const displayName = sender?.full_name || sender?.email || 'Workspace User'
               const isSelf = msg.sender_id === currentUserProfile?.id
               const isSending = msg.status === 'sending'
-              const isError = msg.status === 'error'
 
               return (
                 <div
@@ -685,7 +867,7 @@ export default function GlobalChatPage({ currentUserProfile, onBack }) {
           <div ref={messagesEndRef} />
         </div>
 
-        {/* ── @MENTIONS POPUP AUTOCOMPLETE DROPDOWN ── */}
+        {/* ── @MENTIONS AUTOCOMPLETE DROPDOWN ── */}
         {mentionQuery !== null && matchingMentionUsers.length > 0 && (
           <div style={{
             position: 'absolute',
@@ -756,40 +938,107 @@ export default function GlobalChatPage({ currentUserProfile, onBack }) {
 
       </div>
 
-      {/* ── CREATE CHANNEL MODAL ── */}
+      {/* ── CREATE CHANNEL / MULTI-MEMBER GROUP CHAT MODAL ── */}
       {showCreateModal && (
         <div className="modal-overlay" onClick={() => setShowCreateModal(false)}>
-          <div className="modal" style={{ maxWidth: '420px' }} onClick={e => e.stopPropagation()}>
+          <div className="modal" style={{ maxWidth: '440px', background: '#161616', border: '0.5px solid #232323' }} onClick={e => e.stopPropagation()}>
             <div className="modal-header">
-              <h3 className="font-headline" style={{ margin: 0, fontSize: '16px', color: '#f5f5f0' }}>Create Group Channel</h3>
+              <h3 className="font-headline" style={{ margin: 0, fontSize: '16px', color: '#f5f5f0' }}>Create Channel or Group Chat</h3>
               <button onClick={() => setShowCreateModal(false)} style={{ background: 'none', border: 'none', color: '#8a8a85', cursor: 'pointer', fontSize: '18px' }}>×</button>
             </div>
-            <form onSubmit={handleCreateChannel}>
+
+            <form onSubmit={handleCreateChannelOrGroup}>
               <div style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                <div>
-                  <label style={{ display: 'block', fontSize: '12px', color: '#8a8a85', marginBottom: '6px' }}>Channel Name</label>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    <span style={{ fontSize: '16px', color: '#3ecf8e', fontWeight: 'bold' }}>#</span>
-                    <input
-                      required
-                      type="text"
-                      placeholder="e.g. sales-leads"
-                      value={newChannelName}
-                      onChange={e => setNewChannelName(e.target.value)}
-                      className="input-base"
-                      style={{ flex: 1 }}
-                      autoFocus
-                    />
-                  </div>
+                
+                {/* Type Selection */}
+                <div style={{ display: 'flex', gap: '10px' }}>
+                  <button
+                    type="button"
+                    onClick={() => setCreateType('group')}
+                    style={{
+                      flex: 1,
+                      padding: '8px',
+                      background: createType === 'group' ? 'rgba(62,207,142,0.15)' : '#121212',
+                      border: createType === 'group' ? '0.5px solid #3ecf8e' : '0.5px solid #232323',
+                      color: createType === 'group' ? '#3ecf8e' : '#8a8a85',
+                      borderRadius: '6px',
+                      fontSize: '12px',
+                      fontWeight: '600',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    👥 Group Chat
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setCreateType('team')}
+                    style={{
+                      flex: 1,
+                      padding: '8px',
+                      background: createType === 'team' ? 'rgba(62,207,142,0.15)' : '#121212',
+                      border: createType === 'team' ? '0.5px solid #3ecf8e' : '0.5px solid #232323',
+                      color: createType === 'team' ? '#3ecf8e' : '#8a8a85',
+                      borderRadius: '6px',
+                      fontSize: '12px',
+                      fontWeight: '600',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    # Public Channel
+                  </button>
                 </div>
+
+                {/* Name Input */}
+                <div>
+                  <label style={{ display: 'block', fontSize: '12px', color: '#8a8a85', marginBottom: '6px' }}>
+                    {createType === 'group' ? 'Group Name' : 'Channel Name'}
+                  </label>
+                  <input
+                    required
+                    type="text"
+                    placeholder={createType === 'group' ? 'e.g. Sales Alpha Team' : 'e.g. healthcare-leads'}
+                    value={newChannelName}
+                    onChange={e => setNewChannelName(e.target.value)}
+                    className="input-base"
+                    autoFocus
+                  />
+                </div>
+
+                {/* Member Selection Checkboxes for Group Chats */}
+                {createType === 'group' && (
+                  <div>
+                    <label style={{ display: 'block', fontSize: '12px', color: '#8a8a85', marginBottom: '6px' }}>Select Group Members</label>
+                    <div style={{ maxHeight: '150px', overflowY: 'auto', background: '#121212', border: '0.5px solid #232323', borderRadius: '6px', padding: '8px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                      {teamMembers.filter(m => m.id !== currentUserProfile?.id).map(m => {
+                        const isChecked = selectedMemberIds.includes(m.id)
+                        return (
+                          <label key={m.id} style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '12px', color: '#f5f5f0', cursor: 'pointer', padding: '2px 4px' }}>
+                            <input
+                              type="checkbox"
+                              checked={isChecked}
+                              onChange={e => {
+                                if (e.target.checked) setSelectedMemberIds(prev => [...prev, m.id])
+                                else setSelectedMemberIds(prev => prev.filter(id => id !== m.id))
+                              }}
+                            />
+                            <span>{m.full_name || m.email}</span>
+                          </label>
+                        )
+                      })}
+                    </div>
+                  </div>
+                )}
+
               </div>
+
               <div className="modal-footer">
                 <button type="button" className="btn-ghost" onClick={() => setShowCreateModal(false)}>Cancel</button>
                 <button type="submit" className="btn-primary" disabled={creatingChannel || !newChannelName.trim()}>
-                  {creatingChannel ? 'Creating...' : 'Create Channel'}
+                  {creatingChannel ? 'Creating...' : `Create ${createType === 'group' ? 'Group Chat' : 'Channel'}`}
                 </button>
               </div>
             </form>
+
           </div>
         </div>
       )}
