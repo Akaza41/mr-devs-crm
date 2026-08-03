@@ -7,16 +7,24 @@ export default {
   theme: {
     extend: {
       colors: {
-        'bg-primary': '#0f0f0f',
-        'bg-secondary': '#1a1a1a',
-        'bg-tertiary': '#242424',
+        'bg-base': '#0a0a0a',
+        'bg-panel': '#161616',
+        'bg-card': '#232323',
         'bg-hover': '#2a2a2a',
-        'border-primary': '#2a2a2a',
+        'border-primary': '#232323',
         'border-secondary': '#333333',
         'accent-green': '#3ecf8e',
-        'text-primary': '#ededed',
-        'text-secondary': '#a0a0a0',
+        'text-primary': '#f5f5f0',
+        'text-secondary': '#8a8a85',
         'text-dim': '#555555',
+        // Legacy fallbacks for compatibility
+        'bg-primary': '#0a0a0a',
+        'bg-secondary': '#161616',
+        'bg-tertiary': '#232323',
+      },
+      fontFamily: {
+        headline: ['Plus Jakarta Sans', 'system-ui', 'sans-serif'],
+        sans: ['Inter', 'system-ui', 'sans-serif'],
       },
     },
   },

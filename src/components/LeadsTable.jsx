@@ -61,7 +61,7 @@ function NumberBadge({ v }) {
   return <Badge text="No Number" type="red" />
 }
 
-export default function LeadsTable({ role, leads, customColumns = [], onEdit, onDelete }) {
+export default function LeadsTable({ role, leads, customColumns = [], onEdit, onDelete, onImportClick, onAddLead }) {
   const [copiedCell, setCopiedCell] = useState(null)
 
   const handleCopy = (text, id) => {
@@ -89,8 +89,47 @@ export default function LeadsTable({ role, leads, customColumns = [], onEdit, on
 
   if (!leads.length) {
     return (
-      <div style={{ textAlign: 'center', padding: '60px', color: '#555', fontSize: '13px' }}>
-        No leads found
+      <div
+        style={{
+          background: '#161616',
+          border: '0.5px solid #232323',
+          borderRadius: '12px',
+          padding: '48px 24px',
+          textAlign: 'center',
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justify: 'center',
+          gap: '16px'
+        }}
+      >
+        <div style={{ width: '56px', height: '56px', borderRadius: '50%', background: '#232323', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '24px' }}>
+          📂
+        </div>
+
+        <div>
+          <h3 className="font-headline" style={{ fontSize: '16px', fontWeight: '700', color: '#f5f5f0', margin: '0 0 6px 0' }}>
+            No leads in this view
+          </h3>
+          <p style={{ fontSize: '13px', color: '#8a8a85', margin: 0, maxWidth: '420px', lineHeight: '1.5' }}>
+            Import your leads from an Excel/CSV file or add your first lead to start tracking your sales pipeline.
+          </p>
+        </div>
+
+        {!isReadOnly(role) && (
+          <div style={{ display: 'flex', gap: '12px', marginTop: '8px' }}>
+            {onImportClick && (
+              <button className="btn-primary" onClick={onImportClick}>
+                📂 Import Leads
+              </button>
+            )}
+            {onAddLead && (
+              <button className="btn-ghost" onClick={onAddLead}>
+                + Add Lead
+              </button>
+            )}
+          </div>
+        )}
       </div>
     )
   }

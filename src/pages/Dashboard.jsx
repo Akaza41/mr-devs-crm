@@ -1,24 +1,22 @@
 import { useState, useEffect, useRef } from 'react'
 import { supabase } from '../lib/supabase'
-import StatsBar from '../components/StatsBar'
+import LeftNav from '../components/LeftNav'
+import PipelineFunnel from '../components/PipelineFunnel'
+import TodaysQueue from '../components/TodaysQueue'
 import Toolbar from '../components/Toolbar'
 import LeadsTable from '../components/LeadsTable'
+import SkeletonTable from '../components/SkeletonTable'
 import LeadModal from '../components/LeadModal'
 import ColManager from '../components/ColManager'
 import ImportModal from '../components/ImportModal'
-import ProjectSelector from '../components/ProjectSelector'
 import ProjectModal from '../components/ProjectModal'
 import TeamPage from '../components/TeamPage'
 import AddUserScreen from '../components/team/AddUserScreen'
 import GlobalChatPage from '../components/chat/GlobalChatPage'
 import EmployeeProfilePage from './EmployeeProfilePage'
-import UserMenu from '../components/UserMenu'
 import SettingsPage from './SettingsPage'
-import { canManageProjects, canManageInvites, isReadOnly } from '../lib/permissions'
+import { canManageProjects, canManageInvites } from '../lib/permissions'
 import { useRouting } from '../lib/useRouting'
-// ── Activity Logging ──
-// Import the logger and action constants to record business events without
-// scattering raw insert logic across multiple components.
 import { logActivity } from '../lib/activityLogger'
 import { ACTIONS } from '../lib/activityActions'
 
@@ -35,13 +33,15 @@ export default function Dashboard({ userProfile, role, onLogout }) {
   const [filterPriority, setFilterPriority] = useState('')
   const [filterContacted, setFilterContacted] = useState('')
   const [filterNumber, setFilterNumber] = useState('')
+  const [activeStageFilter, setActiveStageFilter] = useState('')
+
   const [modalOpen, setModalOpen] = useState(false)
   const [colManagerOpen, setColManagerOpen] = useState(false)
   const [importFile, setImportFile] = useState(null)
   const [customColumns, setCustomColumns] = useState([])
   const [editingLead, setEditingLead] = useState(null)
   const [toast, setToast] = useState('')
-  const [onlineUserIds, setOnlineUserIds] = useState(new Set()) // Tracks real-time presence
+  const [onlineUserIds, setOnlineUserIds] = useState(new Set())
 
   const fileInputRef = useRef(null)
   const historyRef = useRef([])
@@ -54,10 +54,8 @@ export default function Dashboard({ userProfile, role, onLogout }) {
   }, [])
 
   // ── Realtime Presence ──
-  // Track this user globally so others see them online, and listen for team members' status.
   useEffect(() => {
     if (!userProfile) return
-
     const channel = supabase.channel('team-presence')
 
     channel
@@ -103,7 +101,6 @@ export default function Dashboard({ userProfile, role, onLogout }) {
 
     let query = supabase.from('leads').select('*').eq('project_id', activeProject.id)
 
-    // For sales and lead generator roles, scope to assigned leads, created leads, or unassigned leads
     if ((role === 'sales' || role === 'lead generator') && userProfile?.id) {
       query = query.or(`assigned_to.eq.${userProfile.id},assigned_to.is.null,created_by.eq.${userProfile.id}`)
     }
@@ -149,8 +146,6 @@ export default function Dashboard({ userProfile, role, onLogout }) {
     leadsRef.current = leads
   }, [leads])
 
-
-
   const showToast = (msg) => {
     setToast(msg)
     setTimeout(() => setToast(''), 2500)
@@ -173,13 +168,12 @@ export default function Dashboard({ userProfile, role, onLogout }) {
     futureRef.current = [action, ...futureRef.current]
     historyRef.current = historyRef.current.slice(0, -1)
 
-    // ── Apply the reverse action locally and to Supabase ──
     if (action.type === 'ADD') {
       updateLeads(leadsRef.current.filter(l => l.id !== action.lead.id))
       await supabase.from('leads').delete().eq('id', action.lead.id)
     } else if (action.type === 'DELETE') {
       updateLeads([...leadsRef.current, action.lead])
-      await supabase.from('leads').insert([action.lead]) // preserves original id
+      await supabase.from('leads').insert([action.lead])
     } else if (action.type === 'UPDATE') {
       updateLeads(leadsRef.current.map(l => l.id === action.id ? action.before : l))
       await supabase.from('leads').update(action.before).eq('id', action.id)
@@ -195,7 +189,6 @@ export default function Dashboard({ userProfile, role, onLogout }) {
     historyRef.current = [...historyRef.current, action]
     futureRef.current = futureRef.current.slice(1)
 
-    // ── Re-apply the action locally and to Supabase ──
     if (action.type === 'ADD') {
       updateLeads([...leadsRef.current, action.lead])
       await supabase.from('leads').insert([action.lead])
@@ -217,7 +210,6 @@ export default function Dashboard({ userProfile, role, onLogout }) {
     }
     window.addEventListener('keydown', handleKey)
     return () => window.removeEventListener('keydown', handleKey)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   const filteredLeads = leads.filter(l => {
@@ -226,7 +218,8 @@ export default function Dashboard({ userProfile, role, onLogout }) {
     const matchPriority = !filterPriority || l.priority === filterPriority
     const matchContacted = !filterContacted || l.contacted === filterContacted
     const matchNumber = !filterNumber || l.number_type === filterNumber
-    return matchSearch && matchPriority && matchContacted && matchNumber
+    const matchStage = !activeStageFilter || (l.stage || 'New').toLowerCase() === activeStageFilter.toLowerCase()
+    return matchSearch && matchPriority && matchContacted && matchNumber && matchStage
   })
 
   const handleSave = async (form) => {
@@ -239,7 +232,6 @@ export default function Dashboard({ userProfile, role, onLogout }) {
         return
       }
 
-      // ── Action-based history: Track the UPDATE ──
       const before = { ...editingLead }
       const after = { ...editingLead, ...form }
       pushHistory({ type: 'UPDATE', id: editingLead.id, before, after })
@@ -248,24 +240,6 @@ export default function Dashboard({ userProfile, role, onLogout }) {
       updateLeads(updatedLeads)
       showToast('Lead updated')
 
-      // If lead was reassigned, auto-add new assignee to lead thread channel_members
-      if (form.assigned_to && form.assigned_to !== editingLead.assigned_to) {
-        const { data: chan } = await supabase
-          .from('chat_channels')
-          .select('id')
-          .eq('type', 'lead_thread')
-          .eq('lead_id', editingLead.id)
-          .maybeSingle()
-
-        if (chan) {
-          await supabase.from('channel_members').upsert({
-            channel_id: chan.id,
-            user_id: form.assigned_to
-          }, { onConflict: 'channel_id,user_id' })
-        }
-      }
-
-      // ── Log the update event (fire-and-forget, never blocks UI) ──
       logActivity({
         action: ACTIONS.LEAD_UPDATED,
         entityType: 'lead',
@@ -274,8 +248,6 @@ export default function Dashboard({ userProfile, role, onLogout }) {
         metadata: { lead_name: form.hospital_name || editingLead.hospital_name },
       })
     } else {
-      // ── Action-based history: Track the ADD ──
-      // We must insert first to capture the DB-generated ID before pushing to history
       const { data, error } = await supabase.from('leads').insert([{ ...form, project_id: activeProject.id }]).select().single()
       if (error) {
         showToast('Error adding lead')
@@ -287,7 +259,6 @@ export default function Dashboard({ userProfile, role, onLogout }) {
       updateLeads(updatedLeads)
       showToast('Lead added')
 
-      // ── Log the create event (fire-and-forget, never blocks UI) ──
       logActivity({
         action: ACTIONS.LEAD_CREATED,
         entityType: 'lead',
@@ -309,14 +280,12 @@ export default function Dashboard({ userProfile, role, onLogout }) {
       return
     }
 
-    // ── Action-based history: Track the DELETE ──
     pushHistory({ type: 'DELETE', lead })
     
     const updatedLeads = leadsRef.current.filter(l => l.id !== lead.id)
     updateLeads(updatedLeads)
     showToast('Lead deleted')
 
-    // ── Log the delete event (fire-and-forget, never blocks UI) ──
     logActivity({
       action: ACTIONS.LEAD_DELETED,
       entityType: 'lead',
@@ -338,7 +307,6 @@ export default function Dashboard({ userProfile, role, onLogout }) {
         if (activeProject?.id === data.id) setActiveProject(data)
         showToast('Project updated')
 
-        // ── Log project update (fire-and-forget) ──
         logActivity({
           action: ACTIONS.PROJECT_UPDATED,
           entityType: 'project',
@@ -357,7 +325,6 @@ export default function Dashboard({ userProfile, role, onLogout }) {
         setActiveProject(data)
         showToast('Project created')
 
-        // ── Log project creation (fire-and-forget) ──
         logActivity({
           action: ACTIONS.PROJECT_CREATED,
           entityType: 'project',
@@ -380,7 +347,6 @@ export default function Dashboard({ userProfile, role, onLogout }) {
       }
       showToast('Project deleted')
 
-      // ── Log project deletion (fire-and-forget) ──
       logActivity({
         action: ACTIONS.PROJECT_DELETED,
         entityType: 'project',
@@ -393,142 +359,131 @@ export default function Dashboard({ userProfile, role, onLogout }) {
   }
 
   return (
-    <div style={{ minHeight: '100vh', background: '#0f0f0f' }}>
+    <div style={{ minHeight: '100vh', background: '#0a0a0a', display: 'flex', flexDirection: 'row' }}>
 
       {toast && (
-        <div style={{ position: 'fixed', bottom: '24px', left: '50%', transform: 'translateX(-50%)', background: '#1a1a1a', border: '0.5px solid #3ecf8e', borderRadius: '8px', padding: '10px 20px', color: '#3ecf8e', fontSize: '13px', zIndex: 999 }}>
+        <div style={{ position: 'fixed', bottom: '24px', left: '50%', transform: 'translateX(-50%)', background: '#161616', border: '0.5px solid #3ecf8e', borderRadius: '8px', padding: '10px 20px', color: '#3ecf8e', fontSize: '13px', zIndex: 999 }}>
           {toast}
         </div>
       )}
 
-      {/* ── TOP NAV BAR ── */}
-      <div className="topbar">
-        <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-          {currentView !== 'leads' && (
-            <button
-              onClick={goBack}
-              style={{
-                background: '#242424',
-                border: '0.5px solid #2a2a2a',
-                borderRadius: '6px',
-                color: '#ededed',
-                cursor: 'pointer',
-                padding: '5px 12px',
-                fontSize: '13px',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '6px',
-                fontWeight: '500',
-                transition: 'background 0.15s'
-              }}
-              title="Go back to previous page"
-            >
-              <span>←</span> Back
-            </button>
-          )}
-          <div 
-            style={{ fontWeight: '600', fontSize: '16px', color: '#ededed', letterSpacing: '0.05em', cursor: 'pointer' }}
-            onClick={() => navigate('leads')}
-          >
-            MR.DEVS CRM
+      {/* ── ROLE-AWARE LEFT SIDEBAR NAVIGATION ── */}
+      <LeftNav
+        userProfile={userProfile}
+        role={role}
+        currentView={currentView}
+        onNavigate={(view) => navigate(view)}
+        onLogout={onLogout}
+        projects={projects}
+        activeProject={activeProject}
+        onChangeProject={setActiveProject}
+        onEditProject={(p) => { setEditingProject(p); setProjectModalOpen(true) }}
+        onDeleteProject={handleDeleteProject}
+        onNewProject={() => { setEditingProject(null); setProjectModalOpen(true) }}
+        onGoBack={goBack}
+        canGoBack={canGoBack}
+      />
+
+      {/* ── MAIN WORKSPACE CONTENT ── */}
+      <main style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, overflowX: 'hidden' }}>
+
+        {projects.length === 0 ? (
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100vh', gap: '16px' }}>
+            <div style={{ fontSize: '18px', color: '#f5f5f0', fontWeight: '500' }}>Create your first project to get started</div>
+            {canManageProjects(role) ? (
+              <button className="btn-primary" onClick={() => { setEditingProject(null); setProjectModalOpen(true) }}>+ New Project</button>
+            ) : (
+              <div style={{ color: '#8a8a85', fontSize: '13px' }}>No projects exist yet. Ask an admin to create one.</div>
+            )}
           </div>
-          <ProjectSelector 
-            role={role}
-            projects={projects}
-            activeProject={activeProject}
-            onChangeProject={setActiveProject}
-            onEditProject={(p) => { setEditingProject(p); setProjectModalOpen(true) }}
-            onDeleteProject={handleDeleteProject}
-            onNewProject={() => { setEditingProject(null); setProjectModalOpen(true) }}
-          />
-          {isReadOnly(role) && (
-            <span className="badge badge-gray" style={{ marginLeft: '12px' }}>👁️ View Only</span>
-          )}
-        </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
-          {!isReadOnly(role) && projects.length > 0 && currentView === 'leads' && (
-            <>
-              <button onClick={undo} style={{ background: 'none', border: '0.5px solid #2a2a2a', borderRadius: '6px', color: '#a0a0a0', cursor: 'pointer', padding: '5px 10px', fontSize: '13px' }}>
-                ↩ Undo
-              </button>
-              <button onClick={redo} style={{ background: 'none', border: '0.5px solid #2a2a2a', borderRadius: '6px', color: '#a0a0a0', cursor: 'pointer', padding: '5px 10px', fontSize: '13px' }}>
-                ↪ Redo
-              </button>
-            </>
-          )}
-          <UserMenu userProfile={userProfile} onLogout={onLogout} onSelectMenu={(view) => {
-            if (view === 'my_profile' || view === 'activity') {
-              navigate('employee_profile', userProfile.id)
-            } else {
-              navigate(view)
-            }
-          }} />
-        </div>
-      </div>
+        ) : (
+          <div style={{ padding: '24px', flex: 1 }}>
+            
+            {/* LEADS VIEW */}
+            {currentView === 'leads' && (
+              <>
+                <Toolbar
+                  role={role}
+                  currentView={currentView}
+                  setCurrentView={(view) => navigate(view)}
+                  search={search} setSearch={setSearch}
+                  filterPriority={filterPriority} setFilterPriority={setFilterPriority}
+                  filterContacted={filterContacted} setFilterContacted={setFilterContacted}
+                  filterNumber={filterNumber} setFilterNumber={setFilterNumber}
+                  onAddLead={() => { setEditingLead(null); setModalOpen(true) }}
+                  onManageColumns={() => setColManagerOpen(true)}
+                  onImportClick={() => fileInputRef?.current?.click()}
+                />
 
-      {projects.length === 0 ? (
-        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: 'calc(100vh - 56px)', gap: '16px' }}>
-          <div style={{ fontSize: '18px', color: '#ededed', fontWeight: '500' }}>Create your first project to get started</div>
-          {canManageProjects(role) ? (
-            <button className="btn-primary" onClick={() => { setEditingProject(null); setProjectModalOpen(true) }}>+ New Project</button>
-          ) : (
-            <div style={{ color: '#555', fontSize: '13px' }}>No projects exist yet. Ask an admin to create one.</div>
-          )}
-        </div>
-      ) : (
-        <div style={{ padding: '24px' }}>
-          {/* Main Top Navigation Tabs — rendered for primary workspace sections */}
-          {['leads', 'chat', 'team', 'add_user'].includes(currentView) && (
-            <Toolbar
-              role={role}
-              currentView={currentView}
-              setCurrentView={(view) => navigate(view)}
-              search={search} setSearch={setSearch}
-              filterPriority={filterPriority} setFilterPriority={setFilterPriority}
-              filterContacted={filterContacted} setFilterContacted={setFilterContacted}
-              filterNumber={filterNumber} setFilterNumber={setFilterNumber}
-              onAddLead={() => { setEditingLead(null); setModalOpen(true) }}
-              onManageColumns={() => setColManagerOpen(true)}
-              onImportClick={() => fileInputRef?.current?.click()}
-            />
-          )}
+                {/* ── STEP 1: PIPELINE FUNNEL ── */}
+                <PipelineFunnel
+                  leads={leads}
+                  activeStageFilter={activeStageFilter}
+                  onSelectStage={(stage) => setActiveStageFilter(stage)}
+                />
 
-          {currentView === 'leads' && (
-            <>
-              <StatsBar leads={leads} />
-              <input type="file" accept=".xlsx,.csv" ref={fileInputRef} style={{ display: 'none' }} onChange={handleFileChange} />
-              {loading ? (
-                <div style={{ textAlign: 'center', padding: '60px', color: '#555', fontSize: '13px' }}>Loading leads...</div>
-              ) : (
-                <LeadsTable role={role} leads={filteredLeads} customColumns={customColumns} onEdit={l => { setEditingLead(l); setModalOpen(true) }} onDelete={handleDelete} />
-              )}
-            </>
-          )}
+                {/* ── STEP 2: TODAY'S QUEUE PANEL ── */}
+                <TodaysQueue
+                  leads={leads}
+                  currentUserProfile={userProfile}
+                  activeProject={activeProject}
+                  onUpdateLead={(updatedLead) => {
+                    updateLeads(leads.map(l => l.id === updatedLead.id ? updatedLead : l))
+                  }}
+                  showToast={showToast}
+                />
 
-          {currentView === 'chat' && (
-            <GlobalChatPage currentUserProfile={userProfile} />
-          )}
+                <input type="file" accept=".xlsx,.csv" ref={fileInputRef} style={{ display: 'none' }} onChange={handleFileChange} />
 
-          {currentView === 'team' && (
-            <TeamPage 
-              onlineUserIds={onlineUserIds} 
-              onViewProfile={(id) => navigate('employee_profile', id)} 
-            />
-          )}
+                {/* ── STEP 4: LOADING SKELETON VS RICH TABLE / EMPTY STATE ── */}
+                {loading ? (
+                  <SkeletonTable rows={6} />
+                ) : (
+                  <LeadsTable
+                    role={role}
+                    leads={filteredLeads}
+                    customColumns={customColumns}
+                    onEdit={l => { setEditingLead(l); setModalOpen(true) }}
+                    onDelete={handleDelete}
+                    onImportClick={() => fileInputRef?.current?.click()}
+                    onAddLead={() => { setEditingLead(null); setModalOpen(true) }}
+                  />
+                )}
+              </>
+            )}
 
-          {currentView === 'add_user' && canManageInvites(role) && (
-            <AddUserScreen currentUserId={userProfile?.id} onBack={goBack} />
-          )}
+            {/* TEAM CHAT VIEW */}
+            {currentView === 'chat' && (
+              <GlobalChatPage currentUserProfile={userProfile} onBack={goBack} />
+            )}
 
-          {currentView === 'employee_profile' && (
-            <EmployeeProfilePage userId={selectedUserId || userProfile?.id} onBack={goBack} />
-          )}
+            {/* TEAM DIRECTORY VIEW */}
+            {currentView === 'team' && (
+              <TeamPage 
+                onlineUserIds={onlineUserIds} 
+                onViewProfile={(id) => navigate('employee_profile', id)} 
+              />
+            )}
 
-          {currentView === 'settings' && (
-            <SettingsPage userProfile={userProfile} onBack={goBack} />
-          )}
-        </div>
-      )}
+            {/* ADD USER VIEW */}
+            {currentView === 'add_user' && canManageInvites(role) && (
+              <AddUserScreen currentUserId={userProfile?.id} onBack={goBack} />
+            )}
+            
+            {/* EMPLOYEE PROFILE VIEW */}
+            {currentView === 'employee_profile' && (
+              <EmployeeProfilePage userId={selectedUserId || userProfile?.id} onBack={goBack} />
+            )}
+
+            {/* SETTINGS VIEW */}
+            {currentView === 'settings' && (
+              <SettingsPage userProfile={userProfile} onBack={goBack} />
+            )}
+
+          </div>
+        )}
+
+      </main>
 
       {modalOpen && <LeadModal lead={editingLead} customColumns={customColumns} onClose={() => setModalOpen(false)} onSave={handleSave} />}
       {colManagerOpen && <ColManager onClose={() => setColManagerOpen(false)} onCustomColumnsChange={setCustomColumns} />}
@@ -542,8 +497,6 @@ export default function Dashboard({ userProfile, role, onLogout }) {
           onClose={() => setImportFile(null)} 
           onSuccess={async (count, skipped = 0, duplicates = 0) => {
             setImportFile(null)
-            // Always start with the imported count, then append each skip reason only if non-zero.
-            // This means the toast only mentions what actually happened (e.g. no "0 duplicates" noise).
             const parts = [`${count} imported`]
             if (skipped > 0) parts.push(`${skipped} skipped (missing name)`)
             if (duplicates > 0) parts.push(`${duplicates} skipped (duplicates)`)
