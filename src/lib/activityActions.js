@@ -16,11 +16,13 @@ export const ACTIONS = {
   PROJECT_DELETED: 'PROJECT_DELETED',
 
   // User / team management
-  USER_INVITED:    'USER_INVITED',
-  USER_REMOVED:    'USER_REMOVED',
-  ROLE_CHANGED:    'ROLE_CHANGED',
+  USER_INVITED:        'USER_INVITED',
+  USER_REMOVED:        'USER_REMOVED',
+  ROLE_CHANGED:        'user.role_changed',
+  STATUS_CHANGED:      'user.status_changed',
+  INVITE_ROLE_UPDATED: 'user.invite_role_updated',
 
   // Profile operations
-  PROFILE_UPDATED: 'PROFILE_UPDATED',
-  USER_LOGGED_IN:  'USER_LOGGED_IN',
+  PROFILE_UPDATED:     'PROFILE_UPDATED',
+  USER_LOGGED_IN:      'USER_LOGGED_IN',
 }

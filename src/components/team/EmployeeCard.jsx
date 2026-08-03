@@ -1,8 +1,6 @@
 import React from 'react'
 
 // ── ROLE BADGE ──
-// Exported so it can be reused in the Header and Editor components.
-// Dynamically falls back to a generic gray pill for unknown future roles.
 export function RoleBadge({ role }) {
   const r = role?.toLowerCase()
   if (r === 'admin') return <span style={{ display: 'inline-block', padding: '2px 8px', borderRadius: '12px', fontSize: '11px', fontWeight: '600', background: 'rgba(62,207,142,0.1)', color: '#3ecf8e', border: '0.5px solid rgba(62,207,142,0.2)' }}>Admin</span>
@@ -14,15 +12,42 @@ export function RoleBadge({ role }) {
   return <span style={{ display: 'inline-block', padding: '2px 8px', borderRadius: '12px', fontSize: '11px', fontWeight: '600', background: 'rgba(156,163,175,0.1)', color: '#9ca3af', border: '0.5px solid rgba(156,163,175,0.2)', textTransform: 'capitalize' }}>{role || 'Unknown'}</span>
 }
 
+// ── STATUS BADGE ──
+export function StatusBadge({ status }) {
+  const isSuspended = status === 'suspended'
+  return (
+    <span style={{
+      display: 'inline-block',
+      padding: '2px 8px',
+      borderRadius: '12px',
+      fontSize: '11px',
+      fontWeight: '600',
+      background: isSuspended ? 'rgba(239,68,68,0.1)' : 'rgba(62,207,142,0.1)',
+      color: isSuspended ? '#ef4444' : '#3ecf8e',
+      border: `0.5px solid ${isSuspended ? 'rgba(239,68,68,0.3)' : 'rgba(62,207,142,0.3)'}`
+    }}>
+      {isSuspended ? 'Suspended' : 'Active'}
+    </span>
+  )
+}
+
 // ── EMPLOYEE CARD ──
-// Reusable component displaying a summary of an employee.
-// Receives data via props to remain decoupled from the data source.
-export default function EmployeeCard({ member, isOnline, onViewProfile, isAdmin, onRoleChange }) {
+export default function EmployeeCard({ member, isOnline, onViewProfile, isAdmin, onRoleChange, onStatusChange }) {
   const displayName = member.full_name || member.username || 'Unnamed User'
   const initial = displayName.charAt(0).toUpperCase()
+  const isSuspended = member.status === 'suspended'
 
   return (
-    <div style={{ background: '#1a1a1a', border: '0.5px solid #2a2a2a', borderRadius: '12px', padding: '20px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+    <div style={{
+      background: '#1a1a1a',
+      border: `0.5px solid ${isSuspended ? 'rgba(239, 68, 68, 0.4)' : '#2a2a2a'}`,
+      borderRadius: '12px',
+      padding: '20px',
+      display: 'flex',
+      flexDirection: 'column',
+      gap: '16px',
+      opacity: isSuspended ? 0.8 : 1
+    }}>
       
       {/* Header: Avatar, Name, Email, Status */}
       <div style={{ display: 'flex', alignItems: 'flex-start', gap: '12px' }}>
@@ -39,8 +64,8 @@ export default function EmployeeCard({ member, isOnline, onViewProfile, isAdmin,
             </div>
             
             <div style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '11px', color: '#a0a0a0' }}>
-              <div style={{ width: '6px', height: '6px', borderRadius: '50%', background: isOnline ? '#3ecf8e' : '#555' }}></div>
-              {isOnline ? <span style={{ color: '#3ecf8e' }}>Online</span> : 'Offline'}
+              <div style={{ width: '6px', height: '6px', borderRadius: '50%', background: isOnline && !isSuspended ? '#3ecf8e' : '#555' }}></div>
+              {isOnline && !isSuspended ? <span style={{ color: '#3ecf8e' }}>Online</span> : 'Offline'}
             </div>
           </div>
           
@@ -48,8 +73,9 @@ export default function EmployeeCard({ member, isOnline, onViewProfile, isAdmin,
             {member.email}
           </div>
           
-          <div style={{ marginTop: '8px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <div style={{ marginTop: '8px', display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
             <RoleBadge role={member.role} />
+            <StatusBadge status={member.status} />
 
             {/* Admin Direct Role Editor Dropdown */}
             {isAdmin && onRoleChange && (
@@ -78,7 +104,7 @@ export default function EmployeeCard({ member, isOnline, onViewProfile, isAdmin,
         </div>
       </div>
 
-      {/* Metrics Grid (Populated from Phase 4 activity logs) */}
+      {/* Metrics Grid */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginTop: '8px', padding: '12px', background: '#141414', borderRadius: '8px', border: '0.5px solid #222' }}>
         <div>
           <div style={{ fontSize: '11px', color: '#555', textTransform: 'uppercase' }}>Leads Created</div>
@@ -95,15 +121,34 @@ export default function EmployeeCard({ member, isOnline, onViewProfile, isAdmin,
       </div>
 
       {/* Actions */}
-      <div style={{ marginTop: 'auto', paddingTop: '8px' }}>
+      <div style={{ marginTop: 'auto', paddingTop: '8px', display: 'flex', gap: '8px' }}>
         <button 
           onClick={() => onViewProfile(member.id)}
-          style={{ width: '100%', background: 'none', border: '0.5px solid #333', borderRadius: '6px', color: '#ededed', padding: '8px 0', cursor: 'pointer', fontSize: '13px', fontWeight: '500', transition: 'background 0.2s' }}
+          style={{ flex: 1, background: 'none', border: '0.5px solid #333', borderRadius: '6px', color: '#ededed', padding: '8px 0', cursor: 'pointer', fontSize: '13px', fontWeight: '500', transition: 'background 0.2s' }}
           onMouseOver={e => e.currentTarget.style.background = '#222'}
           onMouseOut={e => e.currentTarget.style.background = 'none'}
         >
           View Profile
         </button>
+
+        {isAdmin && onStatusChange && (
+          <button
+            onClick={() => onStatusChange(member.id, isSuspended ? 'active' : 'suspended')}
+            style={{
+              padding: '8px 12px',
+              background: isSuspended ? 'rgba(62,207,142,0.1)' : 'rgba(239,68,68,0.1)',
+              border: `0.5px solid ${isSuspended ? 'rgba(62,207,142,0.3)' : 'rgba(239,68,68,0.3)'}`,
+              color: isSuspended ? '#3ecf8e' : '#f87171',
+              borderRadius: '6px',
+              cursor: 'pointer',
+              fontSize: '12px',
+              fontWeight: '500',
+              whiteSpace: 'nowrap'
+            }}
+          >
+            {isSuspended ? 'Reactivate' : 'Suspend'}
+          </button>
+        )}
       </div>
 
     </div>

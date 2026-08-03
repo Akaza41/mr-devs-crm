@@ -23,12 +23,11 @@ export default function TeamPage({ onViewProfile, onlineUserIds = new Set() }) {
   }
 
   // Fetch profiles — select all fields the EmployeeCard needs to render correctly.
-  // full_name and avatar_url were added to the schema in Phase 6 migration.
   const fetchTeam = async () => {
     setLoading(true)
     const { data: profiles, error } = await supabase
       .from('profiles')
-      .select('id, email, role, full_name, avatar_url')
+      .select('id, email, role, full_name, avatar_url, status')
       .order('created_at', { ascending: true })
 
     if (profiles && !error) {
@@ -63,8 +62,45 @@ export default function TeamPage({ onViewProfile, onlineUserIds = new Set() }) {
     if (!error) {
       setTeam(team.map(m => m.id === memberId ? { ...m, role: newRole } : m))
       showToast(`Updated role to ${newRole}`)
+      logActivity({
+        action: ACTIONS.ROLE_CHANGED,
+        entityType: 'profile',
+        entityId: memberId,
+        metadata: {
+          target_email: targetMember?.email,
+          old_role: oldRole,
+          new_role: newRole,
+        },
+      })
     } else {
       showToast('Failed to update role: ' + error.message)
+    }
+  }
+
+  const handleStatusChange = async (memberId, newStatus) => {
+    const targetMember = team.find(m => m.id === memberId)
+    const oldStatus = targetMember?.status || 'active'
+
+    const { error } = await supabase
+      .from('profiles')
+      .update({ status: newStatus })
+      .eq('id', memberId)
+
+    if (!error) {
+      setTeam(team.map(m => m.id === memberId ? { ...m, status: newStatus } : m))
+      showToast(newStatus === 'suspended' ? `Suspended ${targetMember?.email}` : `Reactivated ${targetMember?.email}`)
+      logActivity({
+        action: ACTIONS.STATUS_CHANGED,
+        entityType: 'profile',
+        entityId: memberId,
+        metadata: {
+          target_email: targetMember?.email,
+          old_status: oldStatus,
+          new_status: newStatus,
+        },
+      })
+    } else {
+      showToast('Failed to update status: ' + error.message)
     }
   }
 
@@ -113,6 +149,7 @@ export default function TeamPage({ onViewProfile, onlineUserIds = new Set() }) {
               onViewProfile={onViewProfile} 
               isAdmin={isAdmin}
               onRoleChange={handleRoleChange}
+              onStatusChange={handleStatusChange}
             />
           ))}
         </div>

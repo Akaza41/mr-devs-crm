@@ -1,6 +1,21 @@
 import React, { useState, useEffect } from 'react'
 import { supabase } from '../../lib/supabase'
 import { RoleBadge } from './EmployeeCard'
+import { logActivity } from '../../lib/activityLogger'
+import { ACTIONS } from '../../lib/activityActions'
+
+function formatRelativeTime(dateString) {
+  if (!dateString) return ''
+  const date = new Date(dateString)
+  const now = new Date()
+  const diffInSeconds = Math.floor((now - date) / 1000)
+
+  if (diffInSeconds < 60) return 'just now'
+  if (diffInSeconds < 3600) return `${Math.floor(diffInSeconds / 60)} minutes ago`
+  if (diffInSeconds < 86400) return `${Math.floor(diffInSeconds / 3600)} hours ago`
+  if (diffInSeconds < 604800) return `${Math.floor(diffInSeconds / 86400)} days ago`
+  return date.toLocaleDateString()
+}
 
 export default function AddUserScreen({ currentUserId }) {
   const [email, setEmail] = useState('')
@@ -58,10 +73,38 @@ export default function AddUserScreen({ currentUserId }) {
       setEmail('')
       setRole('sales')
       fetchPendingInvites()
+
+      logActivity({
+        action: ACTIONS.USER_INVITED,
+        entityType: 'pending_invite',
+        metadata: { email: cleanEmail, role }
+      })
     } catch (err) {
       setError(err.message || 'Failed to add invite')
     } finally {
       setLoading(false)
+    }
+  }
+
+  const handleInviteRoleChange = async (inviteEmail, newRole) => {
+    const invite = invites.find(i => i.email === inviteEmail)
+    const oldRole = invite?.role
+
+    const { error } = await supabase
+      .from('pending_invites')
+      .update({ role: newRole })
+      .eq('email', inviteEmail)
+
+    if (!error) {
+      setInvites(invites.map(i => i.email === inviteEmail ? { ...i, role: newRole } : i))
+      showToast(`Updated invite role to ${newRole}`)
+      logActivity({
+        action: ACTIONS.INVITE_ROLE_UPDATED,
+        entityType: 'pending_invite',
+        metadata: { email: inviteEmail, old_role: oldRole, new_role: newRole }
+      })
+    } else {
+      showToast('Failed to update invite role: ' + error.message)
     }
   }
 
@@ -76,6 +119,11 @@ export default function AddUserScreen({ currentUserId }) {
     if (!error) {
       setInvites(invites.filter(i => i.email !== inviteEmail))
       showToast(`Revoked invite for ${inviteEmail}`)
+      logActivity({
+        action: ACTIONS.USER_REMOVED,
+        entityType: 'pending_invite',
+        metadata: { email: inviteEmail }
+      })
     } else {
       showToast(`Failed to revoke invite: ${error.message}`)
     }
@@ -176,7 +224,7 @@ export default function AddUserScreen({ currentUserId }) {
                 style={{
                   display: 'flex',
                   alignItems: 'center',
-                  justifyContent: 'space-between',
+                  justify: 'space-between',
                   background: '#141414',
                   border: '0.5px solid #222',
                   borderRadius: '8px',
@@ -186,11 +234,33 @@ export default function AddUserScreen({ currentUserId }) {
                 <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                   <span style={{ fontSize: '14px', color: '#ededed', fontWeight: '500' }}>{invite.email}</span>
                   <RoleBadge role={invite.role} />
+                  
+                  {/* Inline Role Selector for Pending Invite */}
+                  <select
+                    value={invite.role || 'sales'}
+                    onChange={e => handleInviteRoleChange(invite.email, e.target.value)}
+                    style={{
+                      background: '#1a1a1a',
+                      border: '0.5px solid #333',
+                      borderRadius: '6px',
+                      color: '#a0a0a0',
+                      fontSize: '11px',
+                      padding: '2px 6px',
+                      outline: 'none',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    <option value="admin">Admin</option>
+                    <option value="manager">Manager</option>
+                    <option value="sales">Sales</option>
+                    <option value="lead generator">Lead Gen</option>
+                    <option value="viewer">Viewer</option>
+                  </select>
                 </div>
 
                 <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
                   <span style={{ fontSize: '12px', color: '#555' }}>
-                    {invite.created_at ? new Date(invite.created_at).toLocaleDateString() : ''}
+                    {formatRelativeTime(invite.created_at)}
                   </span>
                   <button
                     onClick={() => handleRevoke(invite.email)}

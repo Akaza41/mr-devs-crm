@@ -92,11 +92,13 @@ export default function AuthGuard({ userProfile, loading, unauthorized, children
           </div>
           
           <h2 style={{ fontSize: '18px', fontWeight: '600', color: '#ededed', margin: '0 0 10px 0', letterSpacing: '-0.3px' }}>
-            Access Restricted
+            {unauthorized === 'suspended' ? 'Account Suspended' : 'Access Restricted'}
           </h2>
           
           <p style={{ fontSize: '13px', color: '#a0a0a0', lineHeight: '1.5', margin: '0 0 24px 0' }}>
-            Your email isn't authorized for this workspace. Contact your admin to request access.
+            {unauthorized === 'suspended' 
+              ? 'Your account has been suspended by an administrator. Please contact your workspace admin.'
+              : "Your email isn't authorized for this workspace. Contact your admin to request access."}
           </p>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>

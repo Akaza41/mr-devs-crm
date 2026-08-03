@@ -1,16 +1,54 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import { logActivity } from '../lib/activityLogger'
 import { ACTIONS } from '../lib/activityActions'
 
 export default function SettingsPage({ userProfile }) {
   const [loading, setLoading] = useState(false)
+  const [profileLoading, setProfileLoading] = useState(false)
   const [toast, setToast] = useState('')
   const [password, setPassword] = useState('')
+  const [fullName, setFullName] = useState('')
+  const [avatarUrl, setAvatarUrl] = useState('')
+
+  useEffect(() => {
+    if (userProfile) {
+      setFullName(userProfile.full_name || '')
+      setAvatarUrl(userProfile.avatar_url || '')
+    }
+  }, [userProfile])
 
   const showToast = (msg) => {
     setToast(msg)
     setTimeout(() => setToast(''), 3000)
+  }
+
+  const handleProfileUpdate = async (e) => {
+    e.preventDefault()
+    if (!userProfile) return
+    setProfileLoading(true)
+
+    // Targeted profile update excluding role and status
+    const { error } = await supabase
+      .from('profiles')
+      .update({
+        full_name: fullName,
+        avatar_url: avatarUrl
+      })
+      .eq('id', userProfile.id)
+
+    if (error) {
+      showToast('Error updating profile: ' + error.message)
+    } else {
+      showToast('Profile updated successfully')
+      logActivity({
+        action: ACTIONS.PROFILE_UPDATED,
+        entityType: 'profile',
+        entityId: userProfile.id,
+        metadata: { full_name: fullName, avatar_url: avatarUrl }
+      })
+    }
+    setProfileLoading(false)
   }
 
   const handlePasswordChange = async (e) => {
@@ -47,46 +85,78 @@ export default function SettingsPage({ userProfile }) {
         
         {/* Profile Section */}
         <section>
-          <h2 style={{ fontSize: '16px', fontWeight: '500', color: '#a0a0a0', marginBottom: '16px', borderBottom: '1px solid #2a2a2a', paddingBottom: '8px' }}>Profile</h2>
+          <h2 style={{ fontSize: '16px', fontWeight: '500', color: '#a0a0a0', marginBottom: '16px', borderBottom: '1px solid #2a2a2a', paddingBottom: '8px' }}>Personal Profile</h2>
           
-          <div className="card" style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
-            <div style={{ display: 'flex', gap: '20px', alignItems: 'center' }}>
-              <div style={{ width: '64px', height: '64px', borderRadius: '50%', background: '#2a2a2a', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '24px', fontWeight: '600' }}>
-                {userProfile?.avatar_url ? (
-                  <img src={userProfile.avatar_url} alt="Avatar" style={{ width: '100%', height: '100%', borderRadius: '50%', objectFit: 'cover' }} />
-                ) : (userProfile?.full_name?.charAt(0) || 'U')}
-              </div>
-              <div>
-                <div style={{ fontSize: '15px', fontWeight: '500' }}>{userProfile?.full_name}</div>
-                <div style={{ fontSize: '13px', color: '#a0a0a0', marginTop: '4px' }}>{userProfile?.email}</div>
-                <div style={{ marginTop: '8px', display: 'inline-block', padding: '2px 8px', borderRadius: '4px', background: '#2a2a2a', fontSize: '11px', textTransform: 'capitalize' }}>
-                  Role: {userProfile?.role}
+          <div className="card" style={{ padding: '24px', background: '#1a1a1a', border: '0.5px solid #2a2a2a', borderRadius: '12px' }}>
+            <form onSubmit={handleProfileUpdate} style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+              
+              <div style={{ display: 'flex', gap: '20px', alignItems: 'center' }}>
+                <div style={{ width: '64px', height: '64px', borderRadius: '50%', background: '#2a2a2a', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '24px', fontWeight: '600', overflow: 'hidden', flexShrink: 0 }}>
+                  {avatarUrl ? (
+                    <img src={avatarUrl} alt="Avatar" style={{ width: '100%', height: '100%', borderRadius: '50%', objectFit: 'cover' }} />
+                  ) : (fullName?.charAt(0) || 'U')}
+                </div>
+                <div>
+                  <div style={{ fontSize: '15px', fontWeight: '500' }}>{fullName || userProfile?.email}</div>
+                  <div style={{ fontSize: '13px', color: '#a0a0a0', marginTop: '2px' }}>{userProfile?.email}</div>
+                  <div style={{ marginTop: '6px', display: 'inline-block', padding: '2px 8px', borderRadius: '4px', background: '#2a2a2a', fontSize: '11px', textTransform: 'capitalize', color: '#3ecf8e' }}>
+                    Role: {userProfile?.role}
+                  </div>
                 </div>
               </div>
-            </div>
-            
-            <div style={{ fontSize: '12px', color: '#555', fontStyle: 'italic' }}>
-              Note: To change your name or avatar, please visit your Profile page.
-            </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: '12px', color: '#a0a0a0', marginBottom: '6px' }}>Full Name</label>
+                  <input
+                    type="text"
+                    className="input-base"
+                    placeholder="Your name..."
+                    value={fullName}
+                    onChange={e => setFullName(e.target.value)}
+                    style={{ width: '100%', boxSizing: 'border-box' }}
+                  />
+                </div>
+
+                <div>
+                  <label style={{ display: 'block', fontSize: '12px', color: '#a0a0a0', marginBottom: '6px' }}>Avatar Image URL</label>
+                  <input
+                    type="url"
+                    className="input-base"
+                    placeholder="https://example.com/avatar.jpg"
+                    value={avatarUrl}
+                    onChange={e => setAvatarUrl(e.target.value)}
+                    style={{ width: '100%', boxSizing: 'border-box' }}
+                  />
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                <button type="submit" className="btn-primary" disabled={profileLoading}>
+                  {profileLoading ? 'Saving...' : 'Save Profile Changes'}
+                </button>
+              </div>
+
+            </form>
           </div>
         </section>
 
         {/* Security Section */}
         <section>
-          <h2 style={{ fontSize: '16px', fontWeight: '500', color: '#a0a0a0', marginBottom: '16px', borderBottom: '1px solid #2a2a2a', paddingBottom: '8px' }}>Security</h2>
-          <div className="card" style={{ padding: '20px' }}>
-            <form onSubmit={handlePasswordChange} style={{ display: 'flex', flexDirection: 'column', gap: '12px', maxWidth: '300px' }}>
-              <label style={{ fontSize: '13px', color: '#a0a0a0' }}>Change Password</label>
+          <h2 style={{ fontSize: '16px', fontWeight: '500', color: '#a0a0a0', marginBottom: '16px', borderBottom: '1px solid #2a2a2a', paddingBottom: '8px' }}>Security & Password</h2>
+          <div className="card" style={{ padding: '24px', background: '#1a1a1a', border: '0.5px solid #2a2a2a', borderRadius: '12px' }}>
+            <form onSubmit={handlePasswordChange} style={{ display: 'flex', flexDirection: 'column', gap: '12px', maxWidth: '340px' }}>
+              <label style={{ fontSize: '12px', color: '#a0a0a0' }}>New Password</label>
               <input 
                 type="password" 
                 className="input-base" 
-                placeholder="New password..." 
+                placeholder="Enter new password..." 
                 value={password}
                 onChange={e => setPassword(e.target.value)}
                 minLength={6}
                 required
               />
-              <button type="submit" className="btn-primary" disabled={loading} style={{ alignSelf: 'flex-start' }}>
+              <button type="submit" className="btn-primary" disabled={loading} style={{ alignSelf: 'flex-start', marginTop: '4px' }}>
                 {loading ? 'Updating...' : 'Update Password'}
               </button>
             </form>
