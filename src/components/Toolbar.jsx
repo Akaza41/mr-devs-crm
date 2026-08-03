@@ -12,33 +12,40 @@ export default function Toolbar({ role, currentView = 'leads', setCurrentView, s
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', marginBottom: '16px' }}>
       
-      {/* Navigation Tabs — driven strictly by permissions.js */}
-      {(showTeamTab || showAddUserTab) && (
-        <div style={{ display: 'flex', gap: '20px', borderBottom: '0.5px solid #2a2a2a', paddingBottom: '12px' }}>
+      {/* Navigation Tabs — available for all active users */}
+      <div style={{ display: 'flex', gap: '20px', borderBottom: '0.5px solid #2a2a2a', paddingBottom: '12px' }}>
+        <button 
+          style={{ background: 'none', border: 'none', color: currentView === 'leads' ? '#3ecf8e' : '#a0a0a0', fontWeight: currentView === 'leads' ? '600' : '400', cursor: 'pointer', padding: 0, fontSize: '14px' }}
+          onClick={() => setCurrentView('leads')}
+        >
+          Leads Management
+        </button>
+
+        <button 
+          style={{ background: 'none', border: 'none', color: currentView === 'chat' ? '#3ecf8e' : '#a0a0a0', fontWeight: currentView === 'chat' ? '600' : '400', cursor: 'pointer', padding: 0, fontSize: '14px', display: 'flex', alignItems: 'center', gap: '6px' }}
+          onClick={() => setCurrentView('chat')}
+        >
+          <span>Team Chat</span>
+          <span style={{ fontSize: '11px', background: 'rgba(62,207,142,0.1)', color: '#3ecf8e', padding: '1px 6px', borderRadius: '10px' }}>💬</span>
+        </button>
+
+        {showTeamTab && (
           <button 
-            style={{ background: 'none', border: 'none', color: currentView === 'leads' ? '#3ecf8e' : '#a0a0a0', fontWeight: currentView === 'leads' ? '600' : '400', cursor: 'pointer', padding: 0, fontSize: '14px' }}
-            onClick={() => setCurrentView('leads')}
+            style={{ background: 'none', border: 'none', color: currentView === 'team' || currentView === 'employee_profile' ? '#3ecf8e' : '#a0a0a0', fontWeight: currentView === 'team' || currentView === 'employee_profile' ? '600' : '400', cursor: 'pointer', padding: 0, fontSize: '14px' }}
+            onClick={() => setCurrentView('team')}
           >
-            Leads Management
+            Team
           </button>
-          {showTeamTab && (
-            <button 
-              style={{ background: 'none', border: 'none', color: currentView === 'team' || currentView === 'employee_profile' ? '#3ecf8e' : '#a0a0a0', fontWeight: currentView === 'team' || currentView === 'employee_profile' ? '600' : '400', cursor: 'pointer', padding: 0, fontSize: '14px' }}
-              onClick={() => setCurrentView('team')}
-            >
-              Team
-            </button>
-          )}
-          {showAddUserTab && (
-            <button 
-              style={{ background: 'none', border: 'none', color: currentView === 'add_user' ? '#3ecf8e' : '#a0a0a0', fontWeight: currentView === 'add_user' ? '600' : '400', cursor: 'pointer', padding: 0, fontSize: '14px' }}
-              onClick={() => setCurrentView('add_user')}
-            >
-              + Add User & Invites
-            </button>
-          )}
-        </div>
-      )}
+        )}
+        {showAddUserTab && (
+          <button 
+            style={{ background: 'none', border: 'none', color: currentView === 'add_user' ? '#3ecf8e' : '#a0a0a0', fontWeight: currentView === 'add_user' ? '600' : '400', cursor: 'pointer', padding: 0, fontSize: '14px' }}
+            onClick={() => setCurrentView('add_user')}
+          >
+            + Add User & Invites
+          </button>
+        )}
+      </div>
 
       {/* Leads Filters & Action Buttons — only visible on the leads view */}
       {currentView === 'leads' && (

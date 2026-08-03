@@ -10,6 +10,7 @@ import ProjectSelector from '../components/ProjectSelector'
 import ProjectModal from '../components/ProjectModal'
 import TeamPage from '../components/TeamPage'
 import AddUserScreen from '../components/team/AddUserScreen'
+import GlobalChatPage from '../components/chat/GlobalChatPage'
 import EmployeeProfilePage from './EmployeeProfilePage'
 import UserMenu from '../components/UserMenu'
 import SettingsPage from './SettingsPage'
@@ -247,6 +248,23 @@ export default function Dashboard({ userProfile, role, onLogout }) {
       updateLeads(updatedLeads)
       showToast('Lead updated')
 
+      // If lead was reassigned, auto-add new assignee to lead thread channel_members
+      if (form.assigned_to && form.assigned_to !== editingLead.assigned_to) {
+        const { data: chan } = await supabase
+          .from('chat_channels')
+          .select('id')
+          .eq('type', 'lead_thread')
+          .eq('lead_id', editingLead.id)
+          .maybeSingle()
+
+        if (chan) {
+          await supabase.from('channel_members').upsert({
+            channel_id: chan.id,
+            user_id: form.assigned_to
+          }, { onConflict: 'channel_id,user_id' })
+        }
+      }
+
       // ── Log the update event (fire-and-forget, never blocks UI) ──
       logActivity({
         action: ACTIONS.LEAD_UPDATED,
@@ -459,6 +477,10 @@ export default function Dashboard({ userProfile, role, onLogout }) {
             </div>
           )}
           
+          {currentView === 'chat' && (
+            <GlobalChatPage currentUserProfile={userProfile} />
+          )}
+
           {currentView === 'team' && (
             <TeamPage 
               onlineUserIds={onlineUserIds} 
