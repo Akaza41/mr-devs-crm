@@ -26,6 +26,9 @@ const MANAGE_COLUMN_ROLES = ['admin', 'manager']
 // Roles with import permission
 const IMPORT_ROLES = ['admin', 'manager', 'sales', 'lead generator']
 
+// Roles that can manage user invites (Add User / Pending Invites screen)
+const INVITE_ROLES = ['admin']
+
 /**
  * Returns true if the role can create or update leads.
  * @param {string} role
@@ -83,9 +86,18 @@ export function canImport(role) {
 }
 
 /**
+ * Returns true if the role can create and manage pending user invites.
+ * @param {string} role
+ */
+export function canManageInvites(role) {
+  return INVITE_ROLES.includes(role)
+}
+
+/**
  * Returns true if the role is strictly read-only (viewer or legacy employee).
  * @param {string} role
  */
 export function isReadOnly(role) {
   return !canWriteLeads(role)
 }
+

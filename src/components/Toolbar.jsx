@@ -1,4 +1,4 @@
-import { canAccessTeam, canWriteLeads, canImport, canManageColumns, isReadOnly } from '../lib/permissions'
+import { canAccessTeam, canManageInvites, canWriteLeads, canImport, canManageColumns, isReadOnly } from '../lib/permissions'
 
 // ── TOOLBAR ──
 // Navigation tabs + filter bar + action buttons.
@@ -7,25 +7,36 @@ import { canAccessTeam, canWriteLeads, canImport, canManageColumns, isReadOnly }
 export default function Toolbar({ role, currentView = 'leads', setCurrentView, search, setSearch, filterPriority, setFilterPriority, filterContacted, setFilterContacted, filterNumber, setFilterNumber, onAddLead, onManageColumns, onImportClick }) {
   // Determine which tabs this role can access
   const showTeamTab = canAccessTeam(role)
+  const showAddUserTab = canManageInvites(role)
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', marginBottom: '16px' }}>
       
-      {/* Navigation Tabs — shown to admin and manager */}
-      {showTeamTab && (
-        <div style={{ display: 'flex', gap: '16px', borderBottom: '0.5px solid #2a2a2a', paddingBottom: '12px' }}>
+      {/* Navigation Tabs — driven strictly by permissions.js */}
+      {(showTeamTab || showAddUserTab) && (
+        <div style={{ display: 'flex', gap: '20px', borderBottom: '0.5px solid #2a2a2a', paddingBottom: '12px' }}>
           <button 
-            style={{ background: 'none', border: 'none', color: currentView === 'leads' ? '#3ecf8e' : '#a0a0a0', fontWeight: currentView === 'leads' ? '600' : '400', cursor: 'pointer', padding: 0 }}
+            style={{ background: 'none', border: 'none', color: currentView === 'leads' ? '#3ecf8e' : '#a0a0a0', fontWeight: currentView === 'leads' ? '600' : '400', cursor: 'pointer', padding: 0, fontSize: '14px' }}
             onClick={() => setCurrentView('leads')}
           >
             Leads Management
           </button>
-          <button 
-            style={{ background: 'none', border: 'none', color: currentView === 'team' || currentView === 'employee_profile' ? '#3ecf8e' : '#a0a0a0', fontWeight: currentView === 'team' || currentView === 'employee_profile' ? '600' : '400', cursor: 'pointer', padding: 0 }}
-            onClick={() => setCurrentView('team')}
-          >
-            Team
-          </button>
+          {showTeamTab && (
+            <button 
+              style={{ background: 'none', border: 'none', color: currentView === 'team' || currentView === 'employee_profile' ? '#3ecf8e' : '#a0a0a0', fontWeight: currentView === 'team' || currentView === 'employee_profile' ? '600' : '400', cursor: 'pointer', padding: 0, fontSize: '14px' }}
+              onClick={() => setCurrentView('team')}
+            >
+              Team
+            </button>
+          )}
+          {showAddUserTab && (
+            <button 
+              style={{ background: 'none', border: 'none', color: currentView === 'add_user' ? '#3ecf8e' : '#a0a0a0', fontWeight: currentView === 'add_user' ? '600' : '400', cursor: 'pointer', padding: 0, fontSize: '14px' }}
+              onClick={() => setCurrentView('add_user')}
+            >
+              + Add User & Invites
+            </button>
+          )}
         </div>
       )}
 

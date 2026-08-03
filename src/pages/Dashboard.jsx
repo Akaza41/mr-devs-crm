@@ -9,10 +9,11 @@ import ImportModal from '../components/ImportModal'
 import ProjectSelector from '../components/ProjectSelector'
 import ProjectModal from '../components/ProjectModal'
 import TeamPage from '../components/TeamPage'
+import AddUserScreen from '../components/team/AddUserScreen'
 import EmployeeProfilePage from './EmployeeProfilePage'
 import UserMenu from '../components/UserMenu'
 import SettingsPage from './SettingsPage'
-import { canManageProjects, isReadOnly } from '../lib/permissions'
+import { canManageProjects, canManageInvites, isReadOnly } from '../lib/permissions'
 // ── Activity Logging ──
 // Import the logger and action constants to record business events without
 // scattering raw insert logic across multiple components.
@@ -98,7 +99,15 @@ export default function Dashboard({ userProfile, role, onLogout }) {
   const fetchLeads = async (ignoreFlag = { current: false }) => {
     if (!activeProject) return
     setLoading(true)
-    const { data, error } = await supabase.from('leads').select('*').eq('project_id', activeProject.id)
+
+    let query = supabase.from('leads').select('*').eq('project_id', activeProject.id)
+
+    // For sales and lead generator roles, scope to assigned leads, created leads, or unassigned leads
+    if ((role === 'sales' || role === 'lead generator') && userProfile?.id) {
+      query = query.or(`assigned_to.eq.${userProfile.id},assigned_to.is.null,created_by.eq.${userProfile.id}`)
+    }
+
+    const { data, error } = await query
     if (!error && !ignoreFlag.current) {
       const order = { High: 0, Medium: 1, Low: 2 }
       const sorted = data.sort((a, b) => {
@@ -455,6 +464,10 @@ export default function Dashboard({ userProfile, role, onLogout }) {
               onlineUserIds={onlineUserIds} 
               onViewProfile={(id) => { setSelectedUserId(id); setCurrentView('employee_profile') }} 
             />
+          )}
+
+          {currentView === 'add_user' && canManageInvites(role) && (
+            <AddUserScreen currentUserId={userProfile?.id} />
           )}
           
           {currentView === 'employee_profile' && (

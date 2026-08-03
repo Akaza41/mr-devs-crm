@@ -51,6 +51,23 @@ export default function TeamPage({ onViewProfile, onlineUserIds = new Set() }) {
   const currentUserProfile = team.find(m => m.id === currentUser)
   const isAdmin = currentUserProfile?.role === 'admin'
 
+  const handleRoleChange = async (memberId, newRole) => {
+    const targetMember = team.find(m => m.id === memberId)
+    const oldRole = targetMember?.role
+
+    const { error } = await supabase
+      .from('profiles')
+      .update({ role: newRole })
+      .eq('id', memberId)
+
+    if (!error) {
+      setTeam(team.map(m => m.id === memberId ? { ...m, role: newRole } : m))
+      showToast(`Updated role to ${newRole}`)
+    } else {
+      showToast('Failed to update role: ' + error.message)
+    }
+  }
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '24px', paddingTop: '12px' }}>
       
@@ -94,6 +111,8 @@ export default function TeamPage({ onViewProfile, onlineUserIds = new Set() }) {
               member={member} 
               isOnline={onlineUserIds.has(member.id)}
               onViewProfile={onViewProfile} 
+              isAdmin={isAdmin}
+              onRoleChange={handleRoleChange}
             />
           ))}
         </div>

@@ -17,10 +17,9 @@ export function RoleBadge({ role }) {
 // ── EMPLOYEE CARD ──
 // Reusable component displaying a summary of an employee.
 // Receives data via props to remain decoupled from the data source.
-export default function EmployeeCard({ member, isOnline, onViewProfile }) {
+export default function EmployeeCard({ member, isOnline, onViewProfile, isAdmin, onRoleChange }) {
   const displayName = member.full_name || member.username || 'Unnamed User'
   const initial = displayName.charAt(0).toUpperCase()
-
 
   return (
     <div style={{ background: '#1a1a1a', border: '0.5px solid #2a2a2a', borderRadius: '12px', padding: '20px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
@@ -49,8 +48,32 @@ export default function EmployeeCard({ member, isOnline, onViewProfile }) {
             {member.email}
           </div>
           
-          <div style={{ marginTop: '8px' }}>
+          <div style={{ marginTop: '8px', display: 'flex', alignItems: 'center', gap: '8px' }}>
             <RoleBadge role={member.role} />
+
+            {/* Admin Direct Role Editor Dropdown */}
+            {isAdmin && onRoleChange && (
+              <select
+                value={member.role || 'viewer'}
+                onChange={e => onRoleChange(member.id, e.target.value)}
+                style={{
+                  background: '#141414',
+                  border: '0.5px solid #333',
+                  borderRadius: '6px',
+                  color: '#a0a0a0',
+                  fontSize: '11px',
+                  padding: '2px 6px',
+                  outline: 'none',
+                  cursor: 'pointer'
+                }}
+              >
+                <option value="admin">Admin</option>
+                <option value="manager">Manager</option>
+                <option value="sales">Sales</option>
+                <option value="lead generator">Lead Gen</option>
+                <option value="viewer">Viewer</option>
+              </select>
+            )}
           </div>
         </div>
       </div>
@@ -70,6 +93,7 @@ export default function EmployeeCard({ member, isOnline, onViewProfile }) {
           <div style={{ fontSize: '13px', color: '#a0a0a0', fontWeight: '500', marginTop: '2px' }}>{member.metrics?.total_actions || 0} actions recorded</div>
         </div>
       </div>
+
       {/* Actions */}
       <div style={{ marginTop: 'auto', paddingTop: '8px' }}>
         <button 
