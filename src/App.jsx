@@ -8,6 +8,7 @@ import { ACTIONS } from './lib/activityActions'
 export default function App() {
   const [userProfile, setUserProfile] = useState(null)
   const [loading, setLoading] = useState(true)
+  const [unauthorized, setUnauthorized] = useState(false)
 
   // ── SUPABASE AUTHENTICATION & SESSION PERSISTENCE ──
   useEffect(() => {
@@ -18,7 +19,7 @@ export default function App() {
         .from('profiles')
         .select('*')
         .eq('id', userId)
-        .single()
+        .maybeSingle()
 
       // ── BOOTSTRAP ADMIN CHECK FOR OWNER EMAIL ──
       if (data && data.email?.toLowerCase() === 'mubeenahma1123@gmail.com' && data.role !== 'admin') {
@@ -32,8 +33,15 @@ export default function App() {
       }
 
       if (mounted) {
-        if (data && !error && data.role) setUserProfile(data)
-        else setUserProfile(null)
+        if (data && !error && data.role) {
+          setUserProfile(data)
+          setUnauthorized(false)
+        } else {
+          // No profile row exists! Unauthorized email -> immediate sign out & gate workspace
+          setUserProfile(null)
+          setUnauthorized(true)
+          await supabase.auth.signOut()
+        }
         setLoading(false)
       }
     }
@@ -73,12 +81,13 @@ export default function App() {
     setLoading(true)
     await supabase.auth.signOut()
     setUserProfile(null)
+    setUnauthorized(false)
     setLoading(false)
   }
 
   return (
     <div className="min-h-screen bg-bg-primary">
-      <AuthGuard loading={loading} userProfile={userProfile}>
+      <AuthGuard loading={loading} userProfile={userProfile} unauthorized={unauthorized}>
         <Dashboard userProfile={userProfile} role={userProfile?.role} onLogout={handleLogout} />
       </AuthGuard>
     </div>

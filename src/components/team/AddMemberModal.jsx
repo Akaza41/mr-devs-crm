@@ -24,22 +24,43 @@ export default function AddMemberModal({ onClose, onSuccess }) {
     setLoading(true)
 
     try {
-      // Invoke the Edge Function
-      const { data, error: invokeError } = await supabase.functions.invoke('create_user', {
-        body: { email, password, full_name: fullName, role }
-      })
+      const cleanEmail = email.toLowerCase().trim()
+      const { data: { session } } = await supabase.auth.getSession()
 
-      if (invokeError) {
-        throw new Error(invokeError.message || 'Failed to invoke edge function')
+      // 1. Add to pending_invites table
+      const { error: inviteError } = await supabase
+        .from('pending_invites')
+        .upsert({
+          email: cleanEmail,
+          role,
+          invited_by: session?.user?.id || null
+        })
+
+      if (inviteError) {
+        throw new Error(inviteError.message || 'Failed to record pending invite')
       }
 
-      if (data?.error) {
-        throw new Error(data.message || data.error)
+      // 2. If password provided, invoke create_user Edge Function to create password account immediately
+      if (password) {
+        const { data, error: invokeError } = await supabase.functions.invoke('create_user', {
+          body: { email: cleanEmail, password, full_name: fullName, role }
+        })
+
+        if (invokeError) {
+          throw new Error(invokeError.message || 'Failed to invoke edge function')
+        }
+
+        if (data?.error) {
+          throw new Error(data.message || data.error)
+        }
+
+        if (data?.success) {
+          onSuccess(data.user)
+          return
+        }
       }
 
-      if (data?.success) {
-        onSuccess(data.user)
-      }
+      onSuccess({ email: cleanEmail, full_name: fullName, role })
     } catch (err) {
       setError(err.message)
     } finally {
