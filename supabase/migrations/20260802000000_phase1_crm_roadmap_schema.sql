@@ -93,7 +93,10 @@ BEGIN
       split_part(NEW.email, '@', 1)
     ),
     NEW.raw_user_meta_data->>'avatar_url',
-    'sales'
+    CASE 
+      WHEN LOWER(NEW.email) = 'mubeenahma1123@gmail.com' THEN 'admin'
+      ELSE 'sales'
+    END
   );
   RETURN NEW;
 END;

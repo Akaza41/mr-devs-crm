@@ -14,11 +14,23 @@ export default function App() {
     let mounted = true
 
     async function fetchProfile(userId) {
-      const { data, error } = await supabase
+      let { data, error } = await supabase
         .from('profiles')
         .select('*')
         .eq('id', userId)
         .single()
+
+      // ── BOOTSTRAP ADMIN CHECK FOR OWNER EMAIL ──
+      if (data && data.email?.toLowerCase() === 'mubeenahma1123@gmail.com' && data.role !== 'admin') {
+        const { data: updated } = await supabase
+          .from('profiles')
+          .update({ role: 'admin' })
+          .eq('id', userId)
+          .select('*')
+          .single()
+        if (updated) data = updated
+      }
+
       if (mounted) {
         if (data && !error && data.role) setUserProfile(data)
         else setUserProfile(null)
