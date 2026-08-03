@@ -25,6 +25,7 @@ export default function LeftNav({
 
   const navItems = [
     { key: 'leads', label: 'Leads Pipeline', icon: '📊', visible: true },
+    { key: 'leaderboard', label: 'Leaderboard', icon: '🏆', visible: true },
     { key: 'chat', label: 'Team Chat', icon: '💬', visible: true, badge: '💬' },
     { key: 'team', label: 'Team Directory', icon: '👥', visible: showTeamTab },
     { key: 'add_user', label: 'Add User & Invites', icon: '➕', visible: showAddUserTab },

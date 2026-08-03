@@ -15,6 +15,7 @@ import AddUserScreen from '../components/team/AddUserScreen'
 import GlobalChatPage from '../components/chat/GlobalChatPage'
 import EmployeeProfilePage from './EmployeeProfilePage'
 import SettingsPage from './SettingsPage'
+import LeaderboardPage from './LeaderboardPage'
 import { canManageProjects, canManageInvites } from '../lib/permissions'
 import { useRouting } from '../lib/useRouting'
 import { logActivity } from '../lib/activityLogger'
@@ -473,6 +474,11 @@ export default function Dashboard({ userProfile, role, onLogout }) {
             {/* EMPLOYEE PROFILE VIEW */}
             {currentView === 'employee_profile' && (
               <EmployeeProfilePage userId={selectedUserId || userProfile?.id} onBack={goBack} />
+            )}
+
+            {/* LEADERBOARD VIEW */}
+            {currentView === 'leaderboard' && (
+              <LeaderboardPage onBack={goBack} />
             )}
 
             {/* SETTINGS VIEW */}

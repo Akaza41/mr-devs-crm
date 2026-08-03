@@ -18,9 +18,18 @@ const FIELDS = [
   { key: 'notes', label: 'Notes', type: 'textarea', full: true },
 ]
 
+const RESEARCH_PROMPTS = [
+  { key: 'weaknesses', label: 'Pain Points & Weaknesses', placeholder: "What's not working for them right now? Current pain points, technical gaps, or complaints..." },
+  { key: 'strengths', label: 'Key Strengths & Differentiators', placeholder: "What are their main selling points, strengths, or key operational advantages?" },
+  { key: 'competitors', label: 'Competitors & Current Vendors', placeholder: "Who are their main competitors or alternative service providers?" },
+  { key: 'opportunity', label: 'Pitch Opportunity & Strategy', placeholder: "What is the pitch, entry point, angle, or high-value offer for them?" },
+]
+
 export default function LeadModal({ lead, customColumns = [], onClose, onSave }) {
   const [activeTab, setActiveTab] = useState('details')
   const [form, setForm] = useState({})
+  const [researchNotes, setResearchNotes] = useState({ weaknesses: '', strengths: '', competitors: '', opportunity: '' })
+  const [showSoftWarning, setShowSoftWarning] = useState(false)
   
   // Discussion Thread State
   const [channel, setChannel] = useState(null)
@@ -42,10 +51,31 @@ export default function LeadModal({ lead, customColumns = [], onClose, onSave })
   useEffect(() => {
     setForm(lead || { has_website: 'No', priority: 'High', stage: 'New', fb_found: 'No', contacted: 'No', reply: '' })
     
+    if (lead?.research_notes) {
+      setResearchNotes({
+        weaknesses: lead.research_notes.weaknesses || '',
+        strengths: lead.research_notes.strengths || '',
+        competitors: lead.research_notes.competitors || '',
+        opportunity: lead.research_notes.opportunity || ''
+      })
+    }
+    
     supabase.auth.getUser().then(({ data }) => {
       setCurrentUser(data?.user || null)
     })
   }, [lead])
+
+  // Calculate live research score (25 pts per valid field >= 15 chars)
+  const calculateScore = () => {
+    let score = 0
+    if ((researchNotes.weaknesses || '').trim().length >= 15) score += 25
+    if ((researchNotes.strengths || '').trim().length >= 15) score += 25
+    if ((researchNotes.competitors || '').trim().length >= 15) score += 25
+    if ((researchNotes.opportunity || '').trim().length >= 15) score += 25
+    return score
+  }
+
+  const currentScore = calculateScore()
 
   useEffect(() => {
     if (activeTab === 'discussion' && lead?.id) {
@@ -91,12 +121,10 @@ export default function LeadModal({ lead, customColumns = [], onClose, onSave })
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
 
-  // Initialize or fetch lead thread channel + members
   const initLeadThreadChannel = async () => {
     if (!lead?.id) return
     setThreadLoading(true)
 
-    // 1. Check if channel already exists
     let { data: existingChan } = await supabase
       .from('chat_channels')
       .select('*')
@@ -104,7 +132,6 @@ export default function LeadModal({ lead, customColumns = [], onClose, onSave })
       .eq('lead_id', lead.id)
       .maybeSingle()
 
-    // 2. If not, create lead_thread channel
     if (!existingChan) {
       const { data: newChan, error: createErr } = await supabase
         .from('chat_channels')
@@ -117,15 +144,12 @@ export default function LeadModal({ lead, customColumns = [], onClose, onSave })
         .select()
         .single()
 
-      if (!createErr && newChan) {
-        existingChan = newChan
-      }
+      if (!createErr && newChan) existingChan = newChan
     }
 
     if (existingChan) {
       setChannel(existingChan)
 
-      // 3. Auto-add key members: admins/managers + assigned_to + created_by
       const { data: adminProfiles } = await supabase
         .from('profiles')
         .select('id')
@@ -147,16 +171,13 @@ export default function LeadModal({ lead, customColumns = [], onClose, onSave })
           .upsert(memberRows, { onConflict: 'channel_id,user_id' })
       }
 
-      // 4. Fetch message history
       const { data: msgData } = await supabase
         .from('chat_messages')
         .select('id, channel_id, sender_id, content, created_at, sender:profiles(id, full_name, avatar_url, email)')
         .eq('channel_id', existingChan.id)
         .order('created_at', { ascending: true })
 
-      if (msgData) {
-        setMessages(msgData)
-      }
+      if (msgData) setMessages(msgData)
     }
 
     setThreadLoading(false)
@@ -182,55 +203,116 @@ export default function LeadModal({ lead, customColumns = [], onClose, onSave })
     }
   }
 
+  const executeSave = () => {
+    const finalData = {
+      ...form,
+      research_notes: researchNotes,
+      research_score: currentScore
+    }
+    onSave(finalData)
+  }
+
   const handleSave = () => {
     if (!form.hospital_name) { alert('Hospital name is required'); return }
-    onSave(form)
+
+    // Check Stage-Change Soft Warning Guardrail
+    const isOutreachStage = ['Contacted', 'Interested', 'Converted'].includes(form.stage)
+    const isUnderResearched = currentScore < 75
+
+    if (isOutreachStage && isUnderResearched && !showSoftWarning) {
+      setShowSoftWarning(true)
+      return
+    }
+
+    executeSave()
   }
 
   return (
     <div className="modal-overlay">
-      <div className="modal" style={{ width: '680px', maxWidth: '95vw' }}>
+      <div className="modal" style={{ width: '720px', maxWidth: '95vw', background: '#161616', border: '0.5px solid #232323' }}>
         
-        {/* Modal Header & Tabs */}
-        <div className="modal-header" style={{ flexDirection: 'column', alignItems: 'stretch', gap: '12px', paddingBottom: '0' }}>
+        {/* Modal Header & Navigation Tabs */}
+        <div className="modal-header" style={{ flexDirection: 'column', alignItems: 'stretch', gap: '12px', paddingBottom: '0', borderBottom: '0.5px solid #232323' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span style={{ fontSize: '15px', fontWeight: '600', color: '#ededed' }}>
-              {lead ? (form.hospital_name || 'Edit Lead') : 'Add New Lead'}
-            </span>
-            <button onClick={onClose} style={{ background: 'none', border: 'none', color: '#555', cursor: 'pointer', fontSize: '18px', lineHeight: 1 }}>×</button>
-          </div>
-
-          {/* Navigation Tabs (Only for existing leads) */}
-          {lead?.id && (
-            <div style={{ display: 'flex', gap: '16px', borderBottom: '1px solid #2a2a2a' }}>
-              <button
-                type="button"
-                onClick={() => setActiveTab('details')}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <span className="font-headline" style={{ fontSize: '16px', fontWeight: '700', color: '#f5f5f0' }}>
+                {lead ? (form.hospital_name || 'Edit Lead') : 'Add New Lead'}
+              </span>
+              
+              {/* Research Score Badge */}
+              <span
                 style={{
-                  background: 'none',
-                  border: 'none',
-                  color: activeTab === 'details' ? '#3ecf8e' : '#a0a0a0',
-                  fontWeight: activeTab === 'details' ? '600' : '400',
-                  padding: '8px 0',
-                  fontSize: '13px',
-                  cursor: 'pointer',
-                  borderBottom: activeTab === 'details' ? '2px solid #3ecf8e' : 'none'
+                  background: currentScore === 100 ? 'rgba(62,207,142,0.18)' : currentScore >= 75 ? 'rgba(234,179,8,0.18)' : '#232323',
+                  color: currentScore === 100 ? '#3ecf8e' : currentScore >= 75 ? '#facc15' : '#8a8a85',
+                  border: currentScore === 100 ? '0.5px solid rgba(62,207,142,0.4)' : '0.5px solid #333',
+                  padding: '2px 8px',
+                  borderRadius: '6px',
+                  fontSize: '11px',
+                  fontWeight: '600'
                 }}
               >
-                Lead Details
-              </button>
+                {currentScore === 100 ? '100/100 ✨ Well Researched' : `Research Score: ${currentScore}/100`}
+              </span>
+            </div>
+
+            <button onClick={onClose} style={{ background: 'none', border: 'none', color: '#8a8a85', cursor: 'pointer', fontSize: '18px' }}>×</button>
+          </div>
+
+          {/* Navigation Tabs */}
+          <div style={{ display: 'flex', gap: '20px', borderBottom: '0.5px solid #232323' }}>
+            <button
+              type="button"
+              onClick={() => setActiveTab('details')}
+              style={{
+                background: 'none',
+                border: 'none',
+                color: activeTab === 'details' ? '#3ecf8e' : '#8a8a85',
+                fontWeight: activeTab === 'details' ? '600' : '400',
+                padding: '8px 0',
+                fontSize: '13px',
+                cursor: 'pointer',
+                borderBottom: activeTab === 'details' ? '2px solid #3ecf8e' : '2px solid transparent'
+              }}
+            >
+              Basic Info
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setActiveTab('research')}
+              style={{
+                background: 'none',
+                border: 'none',
+                color: activeTab === 'research' ? '#3ecf8e' : '#8a8a85',
+                fontWeight: activeTab === 'research' ? '600' : '400',
+                padding: '8px 0',
+                fontSize: '13px',
+                cursor: 'pointer',
+                borderBottom: activeTab === 'research' ? '2px solid #3ecf8e' : '2px solid transparent',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px'
+              }}
+            >
+              <span>Research Notes</span>
+              <span style={{ fontSize: '10px', background: currentScore >= 75 ? 'rgba(62,207,142,0.15)' : '#232323', color: currentScore >= 75 ? '#3ecf8e' : '#8a8a85', padding: '1px 6px', borderRadius: '10px' }}>
+                {currentScore}/100
+              </span>
+            </button>
+
+            {lead?.id && (
               <button
                 type="button"
                 onClick={() => setActiveTab('discussion')}
                 style={{
                   background: 'none',
                   border: 'none',
-                  color: activeTab === 'discussion' ? '#3ecf8e' : '#a0a0a0',
+                  color: activeTab === 'discussion' ? '#3ecf8e' : '#8a8a85',
                   fontWeight: activeTab === 'discussion' ? '600' : '400',
                   padding: '8px 0',
                   fontSize: '13px',
                   cursor: 'pointer',
-                  borderBottom: activeTab === 'discussion' ? '2px solid #3ecf8e' : 'none',
+                  borderBottom: activeTab === 'discussion' ? '2px solid #3ecf8e' : '2px solid transparent',
                   display: 'flex',
                   alignItems: 'center',
                   gap: '6px'
@@ -239,8 +321,8 @@ export default function LeadModal({ lead, customColumns = [], onClose, onSave })
                 <span>Discussion Thread</span>
                 <span style={{ fontSize: '11px', background: 'rgba(62,207,142,0.1)', color: '#3ecf8e', padding: '1px 6px', borderRadius: '10px' }}>💬</span>
               </button>
-            </div>
-          )}
+            )}
+          </div>
         </div>
 
         {/* Modal Body */}
@@ -249,7 +331,7 @@ export default function LeadModal({ lead, customColumns = [], onClose, onSave })
             <div className="modal-body">
               {allFields.map(f => (
                 <div key={f.key} className={`form-group ${f.full ? 'col-span-2' : ''}`}>
-                  <label>{f.label}</label>
+                  <label style={{ color: '#8a8a85', fontSize: '11px' }}>{f.label}</label>
                   {f.type === 'textarea' ? (
                     <textarea className="input-base" value={form[f.key] || ''} onChange={e => setForm(p => ({ ...p, [f.key]: e.target.value }))} />
                   ) : f.type === 'select' ? (
@@ -265,18 +347,61 @@ export default function LeadModal({ lead, customColumns = [], onClose, onSave })
 
             <div className="modal-footer">
               <button className="btn-ghost" onClick={onClose}>Cancel</button>
-              <button className="btn-primary" onClick={handleSave}>Save</button>
+              <button className="btn-primary" onClick={handleSave}>Save Lead</button>
+            </div>
+          </>
+        ) : activeTab === 'research' ? (
+          <>
+            {/* RESEARCH TAB BODY */}
+            <div style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+              <div style={{ background: '#121212', border: '0.5px solid #232323', borderRadius: '8px', padding: '12px 14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div>
+                  <h4 style={{ margin: 0, fontSize: '13px', fontWeight: '600', color: '#f5f5f0' }}>Structured Prospect Research</h4>
+                  <p style={{ margin: '2px 0 0 0', fontSize: '11px', color: '#8a8a85' }}>Each field with meaningful research (15+ chars) earns +25 points toward your score.</p>
+                </div>
+                <div className="font-headline tabular-nums" style={{ fontSize: '20px', fontWeight: '700', color: currentScore === 100 ? '#3ecf8e' : '#f5f5f0' }}>
+                  {currentScore}/100
+                </div>
+              </div>
+
+              {RESEARCH_PROMPTS.map(item => {
+                const textVal = researchNotes[item.key] || ''
+                const charLen = textVal.trim().length
+                const isQualifying = charLen >= 15
+
+                return (
+                  <div key={item.key} style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <label style={{ fontSize: '12px', fontWeight: '600', color: '#f5f5f0' }}>{item.label}</label>
+                      <span style={{ fontSize: '10px', color: isQualifying ? '#3ecf8e' : '#8a8a85', fontWeight: isQualifying ? '600' : '400' }}>
+                        {charLen}/15 chars {isQualifying ? '✓ (+25 pts)' : ''}
+                      </span>
+                    </div>
+                    <textarea
+                      placeholder={item.placeholder}
+                      value={textVal}
+                      onChange={e => setResearchNotes(prev => ({ ...prev, [item.key]: e.target.value }))}
+                      className="input-base"
+                      style={{ minHeight: '64px' }}
+                    />
+                  </div>
+                )
+              })}
+            </div>
+
+            <div className="modal-footer">
+              <button className="btn-ghost" onClick={onClose}>Cancel</button>
+              <button className="btn-primary" onClick={handleSave}>Save Research</button>
             </div>
           </>
         ) : (
           /* Discussion Thread View */
-          <div style={{ display: 'flex', flexDirection: 'column', height: '420px', background: '#141414' }}>
-            
+          <div style={{ display: 'flex', flexDirection: 'column', height: '420px', background: '#121212' }}>
             <div style={{ flex: 1, overflowY: 'auto', padding: '16px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
               {threadLoading ? (
-                <div style={{ color: '#555', fontSize: '12px', textAlign: 'center', margin: 'auto' }}>Loading discussion...</div>
+                <div style={{ color: '#8a8a85', fontSize: '12px', textAlign: 'center', margin: 'auto' }}>Loading discussion...</div>
               ) : messages.length === 0 ? (
-                <div style={{ color: '#555', fontSize: '12px', textAlign: 'center', margin: 'auto' }}>
+                <div style={{ color: '#8a8a85', fontSize: '12px', textAlign: 'center', margin: 'auto' }}>
                   No internal comments yet. Start a discussion for this lead!
                 </div>
               ) : (
@@ -291,13 +416,13 @@ export default function LeadModal({ lead, customColumns = [], onClose, onSave })
                         width: '28px',
                         height: '28px',
                         borderRadius: '50%',
-                        background: '#2a2a2a',
+                        background: '#232323',
                         display: 'flex',
                         alignItems: 'center',
                         justify: 'center',
                         fontSize: '11px',
                         fontWeight: '600',
-                        color: '#ededed',
+                        color: '#f5f5f0',
                         flexShrink: 0
                       }}>
                         {sender?.avatar_url ? (
@@ -309,22 +434,22 @@ export default function LeadModal({ lead, customColumns = [], onClose, onSave })
 
                       <div style={{ flex: 1 }}>
                         <div style={{ display: 'flex', alignItems: 'baseline', gap: '6px' }}>
-                          <span style={{ fontSize: '12px', fontWeight: '600', color: isSelf ? '#3ecf8e' : '#ededed' }}>
+                          <span style={{ fontSize: '12px', fontWeight: '600', color: isSelf ? '#3ecf8e' : '#f5f5f0' }}>
                             {displayName}
                           </span>
-                          <span style={{ fontSize: '10px', color: '#555' }}>
+                          <span style={{ fontSize: '10px', color: '#8a8a85' }}>
                             {msg.created_at ? new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}
                           </span>
                         </div>
 
                         <div style={{
                           fontSize: '12px',
-                          color: '#d4d4d4',
+                          color: '#f5f5f0',
                           marginTop: '2px',
-                          background: '#1a1a1a',
+                          background: '#161616',
                           padding: '8px 12px',
                           borderRadius: '8px',
-                          border: '0.5px solid #262626',
+                          border: '0.5px solid #232323',
                           display: 'inline-block',
                           maxWidth: '90%'
                         }}>
@@ -338,8 +463,7 @@ export default function LeadModal({ lead, customColumns = [], onClose, onSave })
               <div ref={messagesEndRef} />
             </div>
 
-            {/* Input form inside LeadModal Discussion tab */}
-            <form onSubmit={handleSendDiscussionMessage} style={{ padding: '12px 16px', borderTop: '0.5px solid #2a2a2a', background: '#1a1a1a', display: 'flex', gap: '8px' }}>
+            <form onSubmit={handleSendDiscussionMessage} style={{ padding: '12px 16px', borderTop: '0.5px solid #232323', background: '#161616', display: 'flex', gap: '8px' }}>
               <input
                 type="text"
                 placeholder="Write a comment or update for the team..."
@@ -352,11 +476,46 @@ export default function LeadModal({ lead, customColumns = [], onClose, onSave })
                 Comment
               </button>
             </form>
-
           </div>
         )}
 
       </div>
+
+      {/* ── STEP 4: SOFT WARNING GUARDRAIL MODAL ── */}
+      {showSoftWarning && (
+        <div className="modal-overlay" style={{ zIndex: 60 }}>
+          <div className="modal" style={{ maxWidth: '440px', padding: '24px', background: '#161616', border: '0.5px solid #3ecf8e', textAlign: 'center' }}>
+            <div style={{ fontSize: '32px', marginBottom: '12px' }}>⚠️</div>
+            <h3 className="font-headline" style={{ margin: '0 0 8px 0', fontSize: '16px', color: '#f5f5f0' }}>
+              Lead Research Incomplete ({currentScore}/100)
+            </h3>
+            <p style={{ fontSize: '13px', color: '#8a8a85', margin: '0 0 20px 0', lineHeight: '1.5' }}>
+              This lead has a research score of <strong>{currentScore}/100</strong>. We recommend reaching a score of <strong>75+</strong> before moving leads to Contacted stage for higher conversion success.
+            </p>
+            <div style={{ display: 'flex', gap: '10px', justifyContent: 'center' }}>
+              <button
+                className="btn-ghost"
+                onClick={() => {
+                  setShowSoftWarning(false)
+                  setActiveTab('research')
+                }}
+              >
+                Complete Research First
+              </button>
+              <button
+                className="btn-primary"
+                onClick={() => {
+                  setShowSoftWarning(false)
+                  executeSave()
+                }}
+              >
+                Continue Anyway
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   )
 }

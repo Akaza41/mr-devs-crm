@@ -13,7 +13,7 @@ function parseHash(hashStr) {
     return { view: 'employee_profile', userId: id || null }
   }
 
-  const validViews = ['leads', 'chat', 'team', 'add_user', 'settings']
+  const validViews = ['leads', 'chat', 'team', 'add_user', 'settings', 'leaderboard']
   if (validViews.includes(path)) {
     return { view: path, userId: null }
   }
