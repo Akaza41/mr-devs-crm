@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { supabase } from '../lib/supabase'
 import EmployeeHeader from '../components/team/EmployeeHeader'
 import EmployeeStatsCards from '../components/team/EmployeeStatsCards'
@@ -14,16 +14,8 @@ export default function EmployeeProfilePage({ userId, onBack }) {
   const [currentUser, setCurrentUser] = useState(null)
   const [toast, setToast] = useState('')
 
-  useEffect(() => {
-    // Get the ID of the currently logged-in user to enforce safety rules in the editor
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setCurrentUser(session?.user?.id || null)
-    })
-    
-    if (userId) fetchMemberData()
-  }, [userId])
-
-  const fetchMemberData = async () => {
+  const fetchMemberData = useCallback(async () => {
+    if (!userId) return
     setLoading(true)
     const { data, error } = await supabase
       .from('profiles')
@@ -39,7 +31,16 @@ export default function EmployeeProfilePage({ userId, onBack }) {
       setMember({ ...data, metrics })
     }
     setLoading(false)
-  }
+  }, [userId])
+
+  useEffect(() => {
+    // Get the ID of the currently logged-in user to enforce safety rules in the editor
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setCurrentUser(session?.user?.id || null)
+    })
+    
+    if (userId) fetchMemberData()
+  }, [userId, fetchMemberData])
 
   const showToast = (msg) => {
     setToast(msg)
@@ -80,7 +81,7 @@ export default function EmployeeProfilePage({ userId, onBack }) {
         onClick={onBack}
         style={{ background: 'none', border: 'none', color: '#a0a0a0', cursor: 'pointer', fontSize: '13px', marginBottom: '20px', display: 'flex', alignItems: 'center', gap: '6px' }}
       >
-        <span>←</span> Back to Team
+        <span>←</span> Back
       </button>
 
       <EmployeeHeader member={member} />

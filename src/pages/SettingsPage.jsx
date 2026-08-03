@@ -3,7 +3,7 @@ import { supabase } from '../lib/supabase'
 import { logActivity } from '../lib/activityLogger'
 import { ACTIONS } from '../lib/activityActions'
 
-export default function SettingsPage({ userProfile }) {
+export default function SettingsPage({ userProfile, onBack }) {
   const [loading, setLoading] = useState(false)
   const [profileLoading, setProfileLoading] = useState(false)
   const [toast, setToast] = useState('')
@@ -77,6 +77,15 @@ export default function SettingsPage({ userProfile }) {
         <div style={{ position: 'fixed', bottom: '24px', left: '50%', transform: 'translateX(-50%)', background: '#1a1a1a', border: '0.5px solid #3ecf8e', borderRadius: '8px', padding: '10px 20px', color: '#3ecf8e', fontSize: '13px', zIndex: 999 }}>
           {toast}
         </div>
+      )}
+
+      {onBack && (
+        <button 
+          onClick={onBack}
+          style={{ background: 'none', border: 'none', color: '#a0a0a0', cursor: 'pointer', fontSize: '13px', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '6px' }}
+        >
+          <span>←</span> Back
+        </button>
       )}
 
       <h1 style={{ fontSize: '24px', fontWeight: '600', marginBottom: '24px' }}>Settings</h1>

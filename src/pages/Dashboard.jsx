@@ -15,6 +15,7 @@ import EmployeeProfilePage from './EmployeeProfilePage'
 import UserMenu from '../components/UserMenu'
 import SettingsPage from './SettingsPage'
 import { canManageProjects, canManageInvites, isReadOnly } from '../lib/permissions'
+import { useRouting } from '../lib/useRouting'
 // ── Activity Logging ──
 // Import the logger and action constants to record business events without
 // scattering raw insert logic across multiple components.
@@ -26,8 +27,7 @@ export default function Dashboard({ userProfile, role, onLogout }) {
   const [activeProject, setActiveProject] = useState(null)
   const [projectModalOpen, setProjectModalOpen] = useState(false)
   const [editingProject, setEditingProject] = useState(null)
-  const [currentView, setCurrentView] = useState('leads')
-  const [selectedUserId, setSelectedUserId] = useState(null)
+  const { currentView, selectedUserId, navigate, goBack, canGoBack } = useRouting()
 
   const [leads, setLeads] = useState([])
   const [loading, setLoading] = useState(true)
@@ -404,7 +404,34 @@ export default function Dashboard({ userProfile, role, onLogout }) {
       {/* ── TOP NAV BAR ── */}
       <div className="topbar">
         <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-          <div style={{ fontWeight: '600', fontSize: '16px', color: '#ededed', letterSpacing: '0.05em' }}>MR.DEVS CRM</div>
+          {currentView !== 'leads' && (
+            <button
+              onClick={goBack}
+              style={{
+                background: '#242424',
+                border: '0.5px solid #2a2a2a',
+                borderRadius: '6px',
+                color: '#ededed',
+                cursor: 'pointer',
+                padding: '5px 12px',
+                fontSize: '13px',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                fontWeight: '500',
+                transition: 'background 0.15s'
+              }}
+              title="Go back to previous page"
+            >
+              <span>←</span> Back
+            </button>
+          )}
+          <div 
+            style={{ fontWeight: '600', fontSize: '16px', color: '#ededed', letterSpacing: '0.05em', cursor: 'pointer' }}
+            onClick={() => navigate('leads')}
+          >
+            MR.DEVS CRM
+          </div>
           <ProjectSelector 
             role={role}
             projects={projects}
@@ -430,14 +457,10 @@ export default function Dashboard({ userProfile, role, onLogout }) {
             </>
           )}
           <UserMenu userProfile={userProfile} onLogout={onLogout} onSelectMenu={(view) => {
-            if (view === 'my_profile') {
-              setSelectedUserId(userProfile.id)
-              setCurrentView('employee_profile')
-            } else if (view === 'activity') {
-              setSelectedUserId(userProfile.id)
-              setCurrentView('employee_profile') // Activity is at the bottom of the profile
+            if (view === 'my_profile' || view === 'activity') {
+              navigate('employee_profile', userProfile.id)
             } else {
-              setCurrentView(view)
+              navigate(view)
             }
           }} />
         </div>
@@ -453,20 +476,25 @@ export default function Dashboard({ userProfile, role, onLogout }) {
           )}
         </div>
       ) : (
-        <>
+        <div style={{ padding: '24px' }}>
+          {/* Main Top Navigation Tabs — rendered for primary workspace sections */}
+          {['leads', 'chat', 'team', 'add_user'].includes(currentView) && (
+            <Toolbar
+              role={role}
+              currentView={currentView}
+              setCurrentView={(view) => navigate(view)}
+              search={search} setSearch={setSearch}
+              filterPriority={filterPriority} setFilterPriority={setFilterPriority}
+              filterContacted={filterContacted} setFilterContacted={setFilterContacted}
+              filterNumber={filterNumber} setFilterNumber={setFilterNumber}
+              onAddLead={() => { setEditingLead(null); setModalOpen(true) }}
+              onManageColumns={() => setColManagerOpen(true)}
+              onImportClick={() => fileInputRef?.current?.click()}
+            />
+          )}
+
           {currentView === 'leads' && (
-            <div style={{ padding: '24px' }}>
-              <Toolbar
-                role={role}
-                currentView={currentView} setCurrentView={setCurrentView}
-                search={search} setSearch={setSearch}
-                filterPriority={filterPriority} setFilterPriority={setFilterPriority}
-                filterContacted={filterContacted} setFilterContacted={setFilterContacted}
-                filterNumber={filterNumber} setFilterNumber={setFilterNumber}
-                onAddLead={() => { setEditingLead(null); setModalOpen(true) }}
-                onManageColumns={() => setColManagerOpen(true)}
-                onImportClick={() => fileInputRef?.current?.click()}
-              />
+            <>
               <StatsBar leads={leads} />
               <input type="file" accept=".xlsx,.csv" ref={fileInputRef} style={{ display: 'none' }} onChange={handleFileChange} />
               {loading ? (
@@ -474,9 +502,9 @@ export default function Dashboard({ userProfile, role, onLogout }) {
               ) : (
                 <LeadsTable role={role} leads={filteredLeads} customColumns={customColumns} onEdit={l => { setEditingLead(l); setModalOpen(true) }} onDelete={handleDelete} />
               )}
-            </div>
+            </>
           )}
-          
+
           {currentView === 'chat' && (
             <GlobalChatPage currentUserProfile={userProfile} />
           )}
@@ -484,22 +512,22 @@ export default function Dashboard({ userProfile, role, onLogout }) {
           {currentView === 'team' && (
             <TeamPage 
               onlineUserIds={onlineUserIds} 
-              onViewProfile={(id) => { setSelectedUserId(id); setCurrentView('employee_profile') }} 
+              onViewProfile={(id) => navigate('employee_profile', id)} 
             />
           )}
 
           {currentView === 'add_user' && canManageInvites(role) && (
-            <AddUserScreen currentUserId={userProfile?.id} />
+            <AddUserScreen currentUserId={userProfile?.id} onBack={goBack} />
           )}
-          
+
           {currentView === 'employee_profile' && (
-            <EmployeeProfilePage userId={selectedUserId} onBack={() => setCurrentView('leads')} />
+            <EmployeeProfilePage userId={selectedUserId || userProfile?.id} onBack={goBack} />
           )}
 
           {currentView === 'settings' && (
-            <SettingsPage userProfile={userProfile} />
+            <SettingsPage userProfile={userProfile} onBack={goBack} />
           )}
-        </>
+        </div>
       )}
 
       {modalOpen && <LeadModal lead={editingLead} customColumns={customColumns} onClose={() => setModalOpen(false)} onSave={handleSave} />}

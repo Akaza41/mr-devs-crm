@@ -17,7 +17,7 @@ function formatRelativeTime(dateString) {
   return date.toLocaleDateString()
 }
 
-export default function AddUserScreen({ currentUserId }) {
+export default function AddUserScreen({ currentUserId, onBack }) {
   const [email, setEmail] = useState('')
   const [role, setRole] = useState('sales')
   const [invites, setInvites] = useState([])
@@ -136,6 +136,15 @@ export default function AddUserScreen({ currentUserId }) {
         <div style={{ position: 'fixed', bottom: '24px', left: '50%', transform: 'translateX(-50%)', background: '#1a1a1a', border: '0.5px solid #3ecf8e', borderRadius: '8px', padding: '10px 20px', color: '#3ecf8e', fontSize: '13px', zIndex: 999 }}>
           {toast}
         </div>
+      )}
+
+      {onBack && (
+        <button 
+          onClick={onBack}
+          style={{ background: 'none', border: 'none', color: '#a0a0a0', cursor: 'pointer', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '6px' }}
+        >
+          <span>←</span> Back
+        </button>
       )}
 
       {/* Header */}
