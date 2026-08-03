@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 
-export default function LeaderboardPage({ onBack }) {
+export default function LeaderboardPage({ onlineUserIds = new Set(), onBack }) {
   const [leaderboard, setLeaderboard] = useState([])
   const [timeframe, setTimeframe] = useState('all') // 'week' | 'month' | 'all'
   const [sortBy, setSortBy] = useState('conversion_rate') // 'conversion_rate' | 'avg_research_score' | 'leads_contacted'
@@ -189,12 +189,24 @@ export default function LeaderboardPage({ onBack }) {
                 </div>
 
                 <div style={{ display: 'flex', alignItems: 'center', gap: '14px', marginBottom: '16px' }}>
-                  <div style={{ width: '44px', height: '44px', borderRadius: '50%', background: '#232323', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '18px', fontWeight: '700', color: '#f5f5f0' }}>
+                  <div style={{ position: 'relative', width: '44px', height: '44px', borderRadius: '50%', background: '#232323', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '18px', fontWeight: '700', color: '#f5f5f0' }}>
                     {rep.avatar_url ? (
                       <img src={rep.avatar_url} alt={rep.full_name} style={{ width: '100%', height: '100%', borderRadius: '50%', objectFit: 'cover' }} />
                     ) : (
                       (rep.full_name || rep.email || 'U').charAt(0).toUpperCase()
                     )}
+                    <div
+                      style={{
+                        position: 'absolute',
+                        bottom: '0px',
+                        right: '0px',
+                        width: '10px',
+                        height: '10px',
+                        borderRadius: '50%',
+                        background: (onlineUserIds.has(rep.user_id) || (rep.last_active && (new Date() - new Date(rep.last_active)) < 15 * 60 * 1000)) ? '#3ecf8e' : '#555',
+                        border: '1.5px solid #161616'
+                      }}
+                    />
                   </div>
                   <div>
                     <div style={{ fontSize: '15px', fontWeight: '700', color: '#f5f5f0' }}>{rep.full_name || rep.email}</div>
@@ -259,12 +271,24 @@ export default function LeaderboardPage({ onBack }) {
 
                     <td>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                        <div style={{ width: '32px', height: '32px', borderRadius: '50%', background: '#232323', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '13px', fontWeight: '600', color: '#f5f5f0' }}>
+                        <div style={{ position: 'relative', width: '32px', height: '32px', borderRadius: '50%', background: '#232323', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '13px', fontWeight: '600', color: '#f5f5f0' }}>
                           {rep.avatar_url ? (
                             <img src={rep.avatar_url} alt={rep.full_name} style={{ width: '100%', height: '100%', borderRadius: '50%', objectFit: 'cover' }} />
                           ) : (
                             (rep.full_name || rep.email || 'U').charAt(0).toUpperCase()
                           )}
+                          <div
+                            style={{
+                              position: 'absolute',
+                              bottom: '-1px',
+                              right: '-1px',
+                              width: '8px',
+                              height: '8px',
+                              borderRadius: '50%',
+                              background: (onlineUserIds.has(rep.user_id) || (rep.last_active && (new Date() - new Date(rep.last_active)) < 15 * 60 * 1000)) ? '#3ecf8e' : '#555',
+                              border: '1.5px solid #161616'
+                            }}
+                          />
                         </div>
                         <div>
                           <div style={{ fontWeight: '600', color: '#f5f5f0', fontSize: '13px' }}>{rep.full_name || rep.email}</div>

@@ -20,6 +20,8 @@ function formatRelativeTime(dateString) {
 export default function AddUserScreen({ currentUserId, onBack }) {
   const [email, setEmail] = useState('')
   const [role, setRole] = useState('sales')
+  const [title, setTitle] = useState('')
+  const [specialtiesInput, setSpecialtiesInput] = useState('')
   const [invites, setInvites] = useState([])
   const [loading, setLoading] = useState(false)
   const [fetching, setFetching] = useState(true)
@@ -56,6 +58,7 @@ export default function AddUserScreen({ currentUserId, onBack }) {
     if (!email) return
 
     const cleanEmail = email.toLowerCase().trim()
+    const specsArray = specialtiesInput ? specialtiesInput.split(',').map(s => s.trim()).filter(Boolean) : []
     setLoading(true)
 
     try {
@@ -64,20 +67,24 @@ export default function AddUserScreen({ currentUserId, onBack }) {
         .upsert({
           email: cleanEmail,
           role,
+          title: title.trim() || null,
+          specialties: specsArray,
           invited_by: currentUserId || null
         })
 
       if (dbError) throw new Error(dbError.message)
 
-      setSuccess(`Invite added for ${cleanEmail} — they can now sign in with Google using this email.`)
+      setSuccess(`Invite added for ${cleanEmail} — they can now sign in with Google.`)
       setEmail('')
+      setTitle('')
+      setSpecialtiesInput('')
       setRole('sales')
       fetchPendingInvites()
 
       logActivity({
         action: ACTIONS.USER_INVITED,
         entityType: 'pending_invite',
-        metadata: { email: cleanEmail, role }
+        metadata: { email: cleanEmail, role, title }
       })
     } catch (err) {
       setError(err.message || 'Failed to add invite')
@@ -130,10 +137,10 @@ export default function AddUserScreen({ currentUserId, onBack }) {
   }
 
   return (
-    <div style={{ maxWidth: '800px', margin: '0 auto', paddingTop: '12px', display: 'flex', flexDirection: 'column', gap: '32px' }}>
+    <div style={{ maxWidth: '840px', margin: '0 auto', paddingTop: '12px', display: 'flex', flexDirection: 'column', gap: '32px' }}>
       
       {toast && (
-        <div style={{ position: 'fixed', bottom: '24px', left: '50%', transform: 'translateX(-50%)', background: '#1a1a1a', border: '0.5px solid #3ecf8e', borderRadius: '8px', padding: '10px 20px', color: '#3ecf8e', fontSize: '13px', zIndex: 999 }}>
+        <div style={{ position: 'fixed', bottom: '24px', left: '50%', transform: 'translateX(-50%)', background: '#161616', border: '0.5px solid #3ecf8e', borderRadius: '8px', padding: '10px 20px', color: '#3ecf8e', fontSize: '13px', zIndex: 999 }}>
           {toast}
         </div>
       )}
@@ -141,7 +148,7 @@ export default function AddUserScreen({ currentUserId, onBack }) {
       {onBack && (
         <button 
           onClick={onBack}
-          style={{ background: 'none', border: 'none', color: '#a0a0a0', cursor: 'pointer', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '6px' }}
+          style={{ background: 'none', border: 'none', color: '#8a8a85', cursor: 'pointer', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '6px' }}
         >
           <span>←</span> Back
         </button>
@@ -149,13 +156,13 @@ export default function AddUserScreen({ currentUserId, onBack }) {
 
       {/* Header */}
       <div>
-        <h2 style={{ fontSize: '18px', fontWeight: '600', color: '#ededed', margin: 0 }}>Add Authorized User / Manage Invites</h2>
-        <p style={{ fontSize: '13px', color: '#a0a0a0', margin: '4px 0 0 0' }}>Invite new workspace members by email and assign their role permissions before first login.</p>
+        <h2 className="font-headline" style={{ fontSize: '20px', fontWeight: '700', color: '#f5f5f0', margin: 0 }}>Add Authorized User / Manage Invites</h2>
+        <p style={{ fontSize: '13px', color: '#8a8a85', margin: '4px 0 0 0' }}>Invite new workspace members by email, assign their system role, job title, and specialty tags before first login.</p>
       </div>
 
       {/* Invite Form Card */}
-      <div style={{ background: '#1a1a1a', border: '0.5px solid #2a2a2a', borderRadius: '12px', padding: '24px' }}>
-        <h3 style={{ fontSize: '15px', fontWeight: '500', color: '#ededed', margin: '0 0 16px 0' }}>New Member Invite</h3>
+      <div style={{ background: '#161616', border: '0.5px solid #232323', borderRadius: '12px', padding: '24px' }}>
+        <h3 className="font-headline" style={{ fontSize: '15px', fontWeight: '600', color: '#f5f5f0', margin: '0 0 16px 0' }}>New Member Invite</h3>
 
         {error && (
           <div style={{ background: 'rgba(239, 68, 68, 0.1)', border: '0.5px solid rgba(239, 68, 68, 0.3)', color: '#f87171', padding: '10px 14px', borderRadius: '8px', fontSize: '13px', marginBottom: '16px' }}>
@@ -169,129 +176,139 @@ export default function AddUserScreen({ currentUserId, onBack }) {
           </div>
         )}
 
-        <form onSubmit={handleAddInvite} style={{ display: 'grid', gridTemplateColumns: '2fr 1fr auto', gap: '12px', alignItems: 'end' }}>
-          <div>
-            <label style={{ display: 'block', fontSize: '12px', color: '#a0a0a0', marginBottom: '6px' }}>Email Address</label>
-            <input
-              required
-              type="email"
-              placeholder="user@example.com"
-              value={email}
-              onChange={e => setEmail(e.target.value)}
-              className="input-base"
-              style={{ width: '100%', boxSizing: 'border-box' }}
-            />
+        <form onSubmit={handleAddInvite} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '14px' }}>
+            <div>
+              <label style={{ display: 'block', fontSize: '12px', color: '#8a8a85', marginBottom: '6px' }}>Email Address *</label>
+              <input
+                required
+                type="email"
+                placeholder="user@example.com"
+                value={email}
+                onChange={e => setEmail(e.target.value)}
+                className="input-base"
+              />
+            </div>
+
+            <div>
+              <label style={{ display: 'block', fontSize: '12px', color: '#8a8a85', marginBottom: '6px' }}>System Role *</label>
+              <select
+                value={role}
+                onChange={e => setRole(e.target.value)}
+                className="input-base"
+              >
+                <option value="sales">Sales Rep</option>
+                <option value="admin">Admin</option>
+                <option value="manager">Manager</option>
+                <option value="lead generator">Lead Generator</option>
+                <option value="viewer">Viewer</option>
+              </select>
+            </div>
           </div>
 
-          <div>
-            <label style={{ display: 'block', fontSize: '12px', color: '#a0a0a0', marginBottom: '6px' }}>Role</label>
-            <select
-              value={role}
-              onChange={e => setRole(e.target.value)}
-              className="input-base"
-              style={{ width: '100%', boxSizing: 'border-box' }}
-            >
-              <option value="sales">Sales Rep</option>
-              <option value="admin">Admin</option>
-              <option value="manager">Manager</option>
-              <option value="lead generator">Lead Generator</option>
-              <option value="viewer">Viewer</option>
-            </select>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr', gap: '14px' }}>
+            <div>
+              <label style={{ display: 'block', fontSize: '12px', color: '#8a8a85', marginBottom: '6px' }}>Job Title (Optional)</label>
+              <input
+                type="text"
+                placeholder="e.g. Senior SDR, Account Exec"
+                value={title}
+                onChange={e => setTitle(e.target.value)}
+                className="input-base"
+              />
+            </div>
+
+            <div>
+              <label style={{ display: 'block', fontSize: '12px', color: '#8a8a85', marginBottom: '6px' }}>Specialty Tags (Optional, comma-separated)</label>
+              <input
+                type="text"
+                placeholder="e.g. cold calling, LinkedIn outreach, SaaS sales"
+                value={specialtiesInput}
+                onChange={e => setSpecialtiesInput(e.target.value)}
+                className="input-base"
+              />
+            </div>
           </div>
 
-          <button
-            type="submit"
-            disabled={loading}
-            className="btn-primary"
-            style={{ height: '38px', padding: '0 20px', whiteSpace: 'nowrap' }}
-          >
-            {loading ? 'Adding...' : '+ Add Invite'}
-          </button>
+          <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '4px' }}>
+            <button type="submit" className="btn-primary" disabled={loading || !email}>
+              {loading ? 'Adding Invite...' : '+ Add Member Invite'}
+            </button>
+          </div>
         </form>
       </div>
 
-      {/* Pending Invites List */}
-      <div style={{ background: '#1a1a1a', border: '0.5px solid #2a2a2a', borderRadius: '12px', padding: '24px' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-          <h3 style={{ fontSize: '15px', fontWeight: '500', color: '#ededed', margin: 0 }}>
-            Pending Invites ({invites.length})
-          </h3>
-          <span style={{ fontSize: '12px', color: '#777' }}>Awaiting first Google login</span>
-        </div>
+      {/* Pending Invites Table */}
+      <div style={{ background: '#161616', border: '0.5px solid #232323', borderRadius: '12px', padding: '24px' }}>
+        <h3 className="font-headline" style={{ fontSize: '15px', fontWeight: '600', color: '#f5f5f0', margin: '0 0 16px 0' }}>
+          Pending Authorizations ({invites.length})
+        </h3>
 
         {fetching ? (
-          <div style={{ color: '#555', fontSize: '13px', textAlign: 'center', padding: '20px' }}>Loading invites...</div>
+          <div style={{ color: '#8a8a85', fontSize: '13px', textAlign: 'center', padding: '20px' }}>Loading invites...</div>
         ) : invites.length === 0 ? (
-          <div style={{ textAlign: 'center', padding: '30px', color: '#555', fontSize: '13px', background: '#141414', borderRadius: '8px', border: '0.5px solid #222' }}>
-            No pending invites. All workspace users have claimed their profiles.
+          <div style={{ color: '#8a8a85', fontSize: '13px', textAlign: 'center', padding: '20px' }}>
+            No pending invites. Anyone with a Google account not listed here will be blocked from logging in.
           </div>
         ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-            {invites.map(invite => (
-              <div
-                key={invite.email}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  justify: 'space-between',
-                  background: '#141414',
-                  border: '0.5px solid #222',
-                  borderRadius: '8px',
-                  padding: '12px 16px'
-                }}
-              >
-                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                  <span style={{ fontSize: '14px', color: '#ededed', fontWeight: '500' }}>{invite.email}</span>
-                  <RoleBadge role={invite.role} />
-                  
-                  {/* Inline Role Selector for Pending Invite */}
-                  <select
-                    value={invite.role || 'sales'}
-                    onChange={e => handleInviteRoleChange(invite.email, e.target.value)}
-                    style={{
-                      background: '#1a1a1a',
-                      border: '0.5px solid #333',
-                      borderRadius: '6px',
-                      color: '#a0a0a0',
-                      fontSize: '11px',
-                      padding: '2px 6px',
-                      outline: 'none',
-                      cursor: 'pointer'
-                    }}
-                  >
-                    <option value="admin">Admin</option>
-                    <option value="manager">Manager</option>
-                    <option value="sales">Sales</option>
-                    <option value="lead generator">Lead Gen</option>
-                    <option value="viewer">Viewer</option>
-                  </select>
-                </div>
-
-                <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-                  <span style={{ fontSize: '12px', color: '#555' }}>
-                    {formatRelativeTime(invite.created_at)}
-                  </span>
-                  <button
-                    onClick={() => handleRevoke(invite.email)}
-                    style={{
-                      background: 'rgba(239, 68, 68, 0.1)',
-                      border: '0.5px solid rgba(239, 68, 68, 0.3)',
-                      color: '#f87171',
-                      borderRadius: '6px',
-                      padding: '6px 12px',
-                      fontSize: '12px',
-                      fontWeight: '500',
-                      cursor: 'pointer',
-                      transition: 'background 0.2s'
-                    }}
-                    onMouseOver={e => e.currentTarget.style.background = 'rgba(239, 68, 68, 0.2)'}
-                    onMouseOut={e => e.currentTarget.style.background = 'rgba(239, 68, 68, 0.1)'}
-                  >
-                    Revoke
-                  </button>
-                </div>
-              </div>
-            ))}
+          <div className="table-wrap">
+            <table style={{ width: '100%' }}>
+              <thead>
+                <tr>
+                  <th>Email</th>
+                  <th>Title</th>
+                  <th>Specialties</th>
+                  <th>Role</th>
+                  <th>Invited</th>
+                  <th>Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                {invites.map(inv => (
+                  <tr key={inv.email}>
+                    <td style={{ fontWeight: '500', color: '#f5f5f0' }}>{inv.email}</td>
+                    <td style={{ color: '#8a8a85', fontSize: '12px' }}>{inv.title || '—'}</td>
+                    <td>
+                      {inv.specialties && inv.specialties.length > 0 ? (
+                        <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
+                          {inv.specialties.map(tag => (
+                            <span key={tag} style={{ background: '#232323', color: '#3ecf8e', padding: '1px 6px', borderRadius: '4px', fontSize: '10px' }}>
+                              {tag}
+                            </span>
+                          ))}
+                        </div>
+                      ) : (
+                        <span style={{ color: '#666', fontSize: '12px' }}>—</span>
+                      )}
+                    </td>
+                    <td>
+                      <select
+                        value={inv.role}
+                        onChange={e => handleInviteRoleChange(inv.email, e.target.value)}
+                        className="input-base"
+                        style={{ padding: '3px 8px', fontSize: '12px' }}
+                      >
+                        <option value="sales">sales</option>
+                        <option value="admin">admin</option>
+                        <option value="manager">manager</option>
+                        <option value="lead generator">lead generator</option>
+                        <option value="viewer">viewer</option>
+                      </select>
+                    </td>
+                    <td style={{ color: '#8a8a85', fontSize: '12px' }}>{formatRelativeTime(inv.created_at)}</td>
+                    <td>
+                      <button
+                        onClick={() => handleRevoke(inv.email)}
+                        className="btn-ghost"
+                        style={{ color: '#ef4444', padding: '4px 8px', fontSize: '12px' }}
+                      >
+                        Revoke
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         )}
       </div>

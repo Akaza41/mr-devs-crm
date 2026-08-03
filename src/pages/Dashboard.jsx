@@ -478,7 +478,7 @@ export default function Dashboard({ userProfile, role, onLogout }) {
 
             {/* LEADERBOARD VIEW */}
             {currentView === 'leaderboard' && (
-              <LeaderboardPage onBack={goBack} />
+              <LeaderboardPage onlineUserIds={onlineUserIds} onBack={goBack} />
             )}
 
             {/* SETTINGS VIEW */}
