@@ -48,25 +48,35 @@ export default function GlobalChatPage({ currentUserProfile, onBack }) {
     messagesEndRef.current?.scrollIntoView({ behavior: smooth ? 'smooth' : 'auto' })
   }
 
+  const isUuid = (id) => typeof id === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)
+
   // ── 1. FETCH TEAM MEMBERS ──
   const fetchTeamMembers = useCallback(async () => {
-    const { data } = await supabase
-      .from('profiles')
-      .select('id, email, full_name, avatar_url, role, status')
-      .eq('status', 'active')
-      .order('full_name', { ascending: true })
+    try {
+      const { data } = await supabase
+        .from('profiles')
+        .select('id, email, full_name, avatar_url, role, status')
+        .eq('status', 'active')
+        .order('full_name', { ascending: true })
 
-    if (data) {
-      setTeamMembers(data)
+      if (data) {
+        setTeamMembers(data)
+      }
+    } catch (e) {
+      console.warn('fetchTeamMembers failed:', e)
     }
   }, [])
 
   // ── 2. FETCH UNREAD MENTIONS FOR INBOX ──
   const fetchUnreadMentions = useCallback(async () => {
-    if (!currentUserProfile?.id) return
-    const { data } = await supabase.rpc('get_unread_mentions', { p_user_id: currentUserProfile.id })
-    if (data) {
-      setUnreadMentions(data)
+    if (!currentUserProfile?.id || !isUuid(currentUserProfile.id)) return
+    try {
+      const { data, error } = await supabase.rpc('get_unread_mentions', { p_user_id: currentUserProfile.id })
+      if (!error && data) {
+        setUnreadMentions(data)
+      }
+    } catch (err) {
+      console.warn('get_unread_mentions RPC not available or failed:', err)
     }
   }, [currentUserProfile])
 
@@ -76,18 +86,36 @@ export default function GlobalChatPage({ currentUserProfile, onBack }) {
     await fetchTeamMembers()
     await fetchUnreadMentions()
 
-    const { data, error } = await supabase
-      .from('chat_channels')
-      .select('*')
-      .order('created_at', { ascending: true })
-
     let channelList = []
-    if (!error && data && data.length > 0) {
-      channelList = data
-    } else {
+    try {
+      const { data, error } = await supabase
+        .from('chat_channels')
+        .select('*')
+        .order('created_at', { ascending: true })
+
+      if (!error && data && data.length > 0) {
+        channelList = data
+      } else {
+        // Attempt to auto-create standard #general channel in database if table is empty
+        const { data: genChan } = await supabase
+          .from('chat_channels')
+          .insert({ name: 'general', type: 'team' })
+          .select('*')
+          .single()
+
+        if (genChan) {
+          channelList = [genChan]
+        }
+      }
+    } catch (e) {
+      console.warn('fetchUserChannels error:', e)
+    }
+
+    // Fallback if DB fetch or creation returned no channels
+    if (channelList.length === 0) {
       channelList = [
-        { id: 'general-channel-id', name: 'general', type: 'team' },
-        { id: 'announcements-channel-id', name: 'announcements', type: 'team' }
+        { id: '00000000-0000-0000-0000-000000000001', name: 'general', type: 'team' },
+        { id: '00000000-0000-0000-0000-000000000002', name: 'announcements', type: 'team' }
       ]
     }
 
@@ -114,14 +142,18 @@ export default function GlobalChatPage({ currentUserProfile, onBack }) {
 
   // ── 4. MARK CHANNEL AS READ ──
   const markChannelAsRead = useCallback(async (channelId) => {
-    if (!currentUserProfile?.id || !channelId) return
-    await supabase
-      .from('channel_members')
-      .upsert({
-        channel_id: channelId,
-        user_id: currentUserProfile.id,
-        last_read_at: new Date().toISOString()
-      }, { onConflict: 'channel_id,user_id' })
+    if (!currentUserProfile?.id || !channelId || !isUuid(channelId) || !isUuid(currentUserProfile.id)) return
+    try {
+      await supabase
+        .from('channel_members')
+        .upsert({
+          channel_id: channelId,
+          user_id: currentUserProfile.id,
+          last_read_at: new Date().toISOString()
+        }, { onConflict: 'channel_id,user_id' })
+    } catch (e) {
+      console.warn('markChannelAsRead error:', e)
+    }
 
     fetchUnreadMentions()
   }, [currentUserProfile, fetchUnreadMentions])
@@ -136,38 +168,49 @@ export default function GlobalChatPage({ currentUserProfile, onBack }) {
       if (cached) setMessages(JSON.parse(cached))
     } catch {}
 
-    const { data: msgData } = await supabase
-      .from('chat_messages')
-      .select('id, channel_id, sender_id, content, mentioned_user_ids, created_at, sender:profiles(id, full_name, avatar_url, email)')
-      .eq('channel_id', channelId)
-      .order('created_at', { ascending: true })
-
-    if (msgData) {
-      const formatted = msgData.map(m => ({ ...m, status: 'sent' }))
-      setMessages(formatted)
-      try {
-        localStorage.setItem(`mrdevs_chat_messages_${channelId}`, JSON.stringify(formatted.slice(-100)))
-      } catch {}
-    }
-
-    const { data: memberData } = await supabase
-      .from('channel_members')
-      .select('user_id, profile:profiles(id, full_name, avatar_url, role)')
-      .eq('channel_id', channelId)
-
-    if (memberData && memberData.length > 0) {
-      setMembers(memberData.map(m => m.profile).filter(Boolean))
-    } else {
+    if (!isUuid(channelId)) {
+      setMessagesLoading(false)
       setMembers(teamMembers)
+      return
     }
 
-    markChannelAsRead(channelId)
+    try {
+      const { data: msgData, error: msgErr } = await supabase
+        .from('chat_messages')
+        .select('id, channel_id, sender_id, content, mentioned_user_ids, created_at, sender:profiles(id, full_name, avatar_url, email)')
+        .eq('channel_id', channelId)
+        .order('created_at', { ascending: true })
+
+      if (!msgErr && msgData) {
+        const formatted = msgData.map(m => ({ ...m, status: 'sent' }))
+        setMessages(formatted)
+        try {
+          localStorage.setItem(`mrdevs_chat_messages_${channelId}`, JSON.stringify(formatted.slice(-100)))
+        } catch {}
+      }
+
+      const { data: memberData, error: memErr } = await supabase
+        .from('channel_members')
+        .select('user_id, profile:profiles(id, full_name, avatar_url, role)')
+        .eq('channel_id', channelId)
+
+      if (!memErr && memberData && memberData.length > 0) {
+        setMembers(memberData.map(m => m.profile).filter(Boolean))
+      } else {
+        setMembers(teamMembers)
+      }
+
+      markChannelAsRead(channelId)
+    } catch (e) {
+      console.warn('fetchChannelData error:', e)
+    }
+
     setMessagesLoading(false)
     setTimeout(() => scrollToBottom(false), 50)
   }, [teamMembers, markChannelAsRead])
 
   useEffect(() => {
-    if (activeChannel?.id) {
+    if (activeChannel?.id && isUuid(activeChannel.id)) {
       fetchChannelData(activeChannel.id)
 
       const channel = supabase
@@ -184,7 +227,7 @@ export default function GlobalChatPage({ currentUserProfile, onBack }) {
             const newMsg = payload.new
 
             let sender = newMsg.sender_id === currentUserProfile?.id ? currentUserProfile : null
-            if (!sender) {
+            if (!sender && isUuid(newMsg.sender_id)) {
               const { data: s } = await supabase
                 .from('profiles')
                 .select('id, full_name, avatar_url, email')
@@ -217,6 +260,8 @@ export default function GlobalChatPage({ currentUserProfile, onBack }) {
       return () => {
         supabase.removeChannel(channel)
       }
+    } else if (activeChannel?.id) {
+      fetchChannelData(activeChannel.id)
     }
   }, [activeChannel, fetchChannelData, currentUserProfile, markChannelAsRead])
 
@@ -274,6 +319,12 @@ export default function GlobalChatPage({ currentUserProfile, onBack }) {
   const sendMessagePayload = async (messageText, tempId, mentionedIds) => {
     if (!activeChannel || !currentUserProfile) return
 
+    if (!isUuid(activeChannel.id)) {
+      setMessages(prev => prev.map(m => m.id === tempId ? { ...m, status: 'error', errorMsg: 'Channel not ready in database' } : m))
+      showToast('Cannot send message: channel is not registered in DB')
+      return
+    }
+
     const { data, error } = await supabase
       .from('chat_messages')
       .insert({
@@ -299,6 +350,8 @@ export default function GlobalChatPage({ currentUserProfile, onBack }) {
       })
     }
   }
+
+
 
   const handleSendMessage = (e) => {
     if (e) e.preventDefault()
