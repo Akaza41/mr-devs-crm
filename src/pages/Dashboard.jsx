@@ -16,6 +16,7 @@ import GlobalChatPage from '../components/chat/GlobalChatPage'
 import EmployeeProfilePage from './EmployeeProfilePage'
 import SettingsPage from './SettingsPage'
 import LeaderboardPage from './LeaderboardPage'
+import UsersPage from './UsersPage'
 import { canManageProjects, canManageInvites } from '../lib/permissions'
 import { useRouting } from '../lib/useRouting'
 import { logActivity } from '../lib/activityLogger'
@@ -360,10 +361,10 @@ export default function Dashboard({ userProfile, role, onLogout }) {
   }
 
   return (
-    <div style={{ minHeight: '100vh', background: '#0a0a0a', display: 'flex', flexDirection: 'row' }}>
+    <div style={{ minHeight: '100vh', background: '#0d0d10' }} className="flex flex-col md:flex-row">
 
       {toast && (
-        <div style={{ position: 'fixed', bottom: '24px', left: '50%', transform: 'translateX(-50%)', background: '#161616', border: '0.5px solid #3ecf8e', borderRadius: '8px', padding: '10px 20px', color: '#3ecf8e', fontSize: '13px', zIndex: 999 }}>
+        <div style={{ position: 'fixed', bottom: '24px', left: '50%', transform: 'translateX(-50%)', background: '#151518', border: '1px solid #3ecf8e', borderRadius: '10px', padding: '10px 20px', color: '#3ecf8e', fontSize: '13px', zIndex: 999, boxShadow: '0 10px 30px rgba(0,0,0,0.5)' }}>
           {toast}
         </div>
       )}
@@ -466,9 +467,9 @@ export default function Dashboard({ userProfile, role, onLogout }) {
               />
             )}
 
-            {/* ADD USER VIEW */}
-            {currentView === 'add_user' && canManageInvites(role) && (
-              <AddUserScreen currentUserId={userProfile?.id} onBack={goBack} />
+            {/* USERS & PERMISSIONS ADMIN VIEW */}
+            {(currentView === 'users' || currentView === 'add_user') && canManageInvites(role) && (
+              <UsersPage currentUserId={userProfile?.id} onBack={goBack} />
             )}
             
             {/* EMPLOYEE PROFILE VIEW */}

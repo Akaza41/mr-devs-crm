@@ -4,9 +4,9 @@ export default function PipelineFunnel({ leads = [], activeStageFilter = '', onS
   const total = leads.length
 
   const stages = [
-    { key: 'New', label: 'New Leads', color: '#333333', activeColor: '#555555', badgeBg: 'rgba(255, 255, 255, 0.08)' },
+    { key: 'New', label: 'New Leads', color: '#333338', activeColor: '#8a8a85', badgeBg: 'rgba(255, 255, 255, 0.08)' },
     { key: 'Contacted', label: 'Contacted', color: 'rgba(59, 130, 246, 0.35)', activeColor: '#60a5fa', badgeBg: 'rgba(59, 130, 246, 0.15)' },
-    { key: 'Interested', label: 'Interested', color: 'rgba(234, 179, 8, 0.45)', activeColor: '#facc15', badgeBg: 'rgba(234, 179, 8, 0.15)' },
+    { key: 'Interested', label: 'Interested', color: 'rgba(242, 184, 75, 0.45)', activeColor: '#f2b84b', badgeBg: 'rgba(242, 184, 75, 0.15)' },
     { key: 'Converted', label: 'Converted', color: '#3ecf8e', activeColor: '#3ecf8e', badgeBg: 'rgba(62, 207, 142, 0.2)' },
     { key: 'Lost', label: 'Lost', color: 'rgba(239, 68, 68, 0.35)', activeColor: '#f87171', badgeBg: 'rgba(239, 68, 68, 0.15)' },
   ]
@@ -21,12 +21,12 @@ export default function PipelineFunnel({ leads = [], activeStageFilter = '', onS
   }, {})
 
   return (
-    <div style={{ background: '#161616', border: '0.5px solid #232323', borderRadius: '12px', padding: '20px', marginBottom: '24px' }}>
+    <div style={{ background: '#1c1c20', border: '1px solid rgba(255, 255, 255, 0.08)', borderRadius: '14px', padding: '24px', marginBottom: '24px', boxShadow: '0 4px 20px rgba(0,0,0,0.35)' }}>
       
       {/* Header Stat Summary */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', flexWrap: 'wrap', gap: '12px' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '18px', flexWrap: 'wrap', gap: '12px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-          <h3 className="font-headline" style={{ fontSize: '15px', fontWeight: '700', color: '#f5f5f0', margin: 0, letterSpacing: '0.02em' }}>
+          <h3 className="font-headline" style={{ fontSize: '15px', fontWeight: '700', color: '#f5f5f0', margin: 0, letterSpacing: '0.03em' }}>
             PIPELINE FUNNEL
           </h3>
           {activeStageFilter && (
@@ -34,13 +34,13 @@ export default function PipelineFunnel({ leads = [], activeStageFilter = '', onS
               onClick={() => onSelectStage('')}
               style={{
                 background: 'rgba(62, 207, 142, 0.12)',
-                border: '0.5px solid rgba(62, 207, 142, 0.3)',
+                border: '1px solid rgba(62, 207, 142, 0.3)',
                 color: '#3ecf8e',
                 borderRadius: '6px',
                 fontSize: '11px',
-                padding: '2px 8px',
+                padding: '3px 10px',
                 cursor: 'pointer',
-                fontWeight: '500'
+                fontWeight: '600'
               }}
             >
               Filter: {activeStageFilter} ✕
@@ -49,13 +49,13 @@ export default function PipelineFunnel({ leads = [], activeStageFilter = '', onS
         </div>
         
         <div style={{ display: 'flex', alignItems: 'center', gap: '16px', fontSize: '12px', color: '#8a8a85' }}>
-          <span>Total Leads: <strong className="font-headline tabular-nums" style={{ color: '#f5f5f0', fontSize: '14px' }}>{total}</strong></span>
-          <span>Click stage segment to filter table</span>
+          <span>Total Leads: <strong className="font-headline tabular-nums" style={{ color: '#f5f5f0', fontSize: '15px', fontWeight: '700' }}>{total}</strong></span>
+          <span>Click stage to filter</span>
         </div>
       </div>
 
       {/* ── STAGE CARDS GRID ── */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '10px', marginBottom: '16px' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '12px', marginBottom: '18px' }}>
         {stages.map(s => {
           const count = counts[s.key] || 0
           const pct = total > 0 ? Math.round((count / total) * 100) : 0
@@ -66,10 +66,10 @@ export default function PipelineFunnel({ leads = [], activeStageFilter = '', onS
               key={s.key}
               onClick={() => onSelectStage(isSelected ? '' : s.key)}
               style={{
-                background: isSelected ? '#232323' : '#121212',
-                border: isSelected ? `1.5px solid ${s.activeColor}` : '0.5px solid #232323',
-                borderRadius: '8px',
-                padding: '12px 14px',
+                background: isSelected ? '#242428' : '#151518',
+                border: isSelected ? `1.5px solid ${s.activeColor}` : '1px solid rgba(255, 255, 255, 0.08)',
+                borderRadius: '10px',
+                padding: '14px 16px',
                 cursor: 'pointer',
                 transition: 'all 0.2s ease',
                 position: 'relative',
@@ -80,7 +80,7 @@ export default function PipelineFunnel({ leads = [], activeStageFilter = '', onS
                 <span>{s.label}</span>
                 <span style={{ fontSize: '10px', opacity: 0.8 }}>{pct}%</span>
               </div>
-              <div className="font-headline tabular-nums" style={{ fontSize: '22px', fontWeight: '700', color: isSelected ? s.activeColor : '#f5f5f0' }}>
+              <div className="font-headline tabular-nums" style={{ fontSize: '24px', fontWeight: '800', color: isSelected ? s.activeColor : '#f5f5f0' }}>
                 {count}
               </div>
             </div>
@@ -94,16 +94,16 @@ export default function PipelineFunnel({ leads = [], activeStageFilter = '', onS
           display: 'flex',
           height: '14px',
           width: '100%',
-          background: '#121212',
+          background: '#151518',
           borderRadius: '8px',
           overflow: 'hidden',
           padding: '2px',
           gap: '2px',
-          border: '0.5px solid #232323'
+          border: '1px solid rgba(255, 255, 255, 0.08)'
         }}
       >
         {total === 0 ? (
-          <div style={{ flex: 1, background: '#232323', borderRadius: '4px' }} title="No leads data" />
+          <div style={{ flex: 1, background: '#242428', borderRadius: '4px' }} title="No leads data" />
         ) : (
           stages.map(s => {
             const count = counts[s.key] || 0

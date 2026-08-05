@@ -76,12 +76,12 @@ export default function TodaysQueue({ leads = [], currentUserProfile, activeProj
 
   if (queueLeads.length === 0) {
     return (
-      <div style={{ background: '#161616', border: '0.5px solid #232323', borderRadius: '10px', padding: '16px 20px', marginBottom: '24px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-          <span style={{ fontSize: '18px' }}>🎉</span>
+      <div style={{ background: '#1c1c20', border: '1px solid rgba(255, 255, 255, 0.08)', borderRadius: '14px', padding: '20px 24px', marginBottom: '24px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', boxShadow: '0 4px 20px rgba(0,0,0,0.35)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+          <span style={{ fontSize: '20px' }}>🎉</span>
           <div>
-            <h4 className="font-headline" style={{ margin: 0, fontSize: '13px', fontWeight: '600', color: '#f5f5f0' }}>Today's Queue Clear!</h4>
-            <span style={{ fontSize: '11px', color: '#8a8a85' }}>All assigned leads have recent follow-up activity.</span>
+            <h4 className="font-headline" style={{ margin: 0, fontSize: '14px', fontWeight: '700', color: '#f5f5f0' }}>Today's Queue Clear!</h4>
+            <span style={{ fontSize: '12px', color: '#8a8a85' }}>All assigned leads have recent follow-up activity.</span>
           </div>
         </div>
       </div>
@@ -89,16 +89,16 @@ export default function TodaysQueue({ leads = [], currentUserProfile, activeProj
   }
 
   return (
-    <div style={{ background: '#161616', border: '0.5px solid #232323', borderRadius: '10px', padding: '18px 20px', marginBottom: '24px' }}>
+    <div style={{ background: '#1c1c20', border: '1px solid rgba(255, 255, 255, 0.08)', borderRadius: '14px', padding: '24px', marginBottom: '24px', boxShadow: '0 4px 20px rgba(0,0,0,0.35)' }}>
       
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <span style={{ fontSize: '14px' }}>⚡</span>
-          <h3 className="font-headline" style={{ fontSize: '14px', fontWeight: '700', color: '#f5f5f0', margin: 0 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+          <span style={{ fontSize: '16px' }}>⚡</span>
+          <h3 className="font-headline" style={{ fontSize: '15px', fontWeight: '700', color: '#f5f5f0', margin: 0, letterSpacing: '0.03em' }}>
             TODAY'S QUEUE ({queueLeads.length})
           </h3>
         </div>
-        <span style={{ fontSize: '11px', color: '#8a8a85' }}>Action required follow-ups</span>
+        <span style={{ fontSize: '12px', color: '#8a8a85' }}>Action required follow-ups</span>
       </div>
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
@@ -106,10 +106,10 @@ export default function TodaysQueue({ leads = [], currentUserProfile, activeProj
           <div
             key={lead.id}
             style={{
-              background: '#121212',
-              border: '0.5px solid #232323',
-              borderRadius: '8px',
-              padding: '10px 14px',
+              background: '#151518',
+              border: '1px solid rgba(255, 255, 255, 0.08)',
+              borderRadius: '10px',
+              padding: '12px 16px',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'space-between',
@@ -117,7 +117,7 @@ export default function TodaysQueue({ leads = [], currentUserProfile, activeProj
               flexWrap: 'wrap'
             }}
           >
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', minWidth: '200px' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '3px', minWidth: '200px' }}>
               <div style={{ fontWeight: '600', fontSize: '13px', color: '#f5f5f0' }}>
                 {lead.hospital_name || lead.lead_name || 'Unnamed Lead'}
               </div>
@@ -142,7 +142,7 @@ export default function TodaysQueue({ leads = [], currentUserProfile, activeProj
                 <button
                   onClick={() => handleQuickAction(lead, 'mark_replied')}
                   className="btn-ghost"
-                  style={{ padding: '4px 10px', fontSize: '11px', background: 'rgba(234, 179, 8, 0.1)', color: '#facc15', borderColor: 'rgba(234, 179, 8, 0.25)' }}
+                  style={{ padding: '4px 10px', fontSize: '11px', background: 'rgba(242, 184, 75, 0.1)', color: '#f2b84b', borderColor: 'rgba(242, 184, 75, 0.25)' }}
                 >
                   💬 Mark Replied
                 </button>
