@@ -23,6 +23,13 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true // async response
   }
 
+  if (message.action === 'GOOGLE_LOGIN') {
+    handleGoogleLogin(message.supabaseUrl, message.supabaseAnonKey)
+      .then(res => sendResponse(res))
+      .catch(err => sendResponse({ success: false, error: err.message }))
+    return true
+  }
+
   if (message.action === 'GET_SESSION') {
     getExtensionConfig().then(config => sendResponse({ success: true, ...config }))
     return true
@@ -41,7 +48,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
 })
 
-// Handles Supabase login via REST Auth API
+// Handles Supabase email/password login via REST Auth API
 async function handleLogin(email, password, customUrl, customKey) {
   const url = (customUrl || DEFAULT_SUPABASE_URL).replace(/\/$/, '')
   const key = customKey || DEFAULT_ANON_KEY
@@ -76,6 +83,72 @@ async function handleLogin(email, password, customUrl, customKey) {
   })
 
   return { success: true, user }
+}
+
+// Handles Google OAuth sign-in via chrome.identity & Supabase OAuth
+async function handleGoogleLogin(customUrl, customKey) {
+  const url = (customUrl || DEFAULT_SUPABASE_URL).replace(/\/$/, '')
+  const key = customKey || DEFAULT_ANON_KEY
+
+  // Use chrome.identity to get redirect URI (e.g. https://<ext-id>.chromiumapp.org/)
+  const redirectUrl = chrome.identity.getRedirectURL()
+  const authUrl = `${url}/auth/v1/authorize?provider=google&redirect_to=${encodeURIComponent(redirectUrl)}`
+
+  return new Promise((resolve, reject) => {
+    chrome.identity.launchWebAuthFlow({
+      url: authUrl,
+      interactive: true
+    }, async (redirectedTo) => {
+      if (chrome.runtime.lastError || !redirectedTo) {
+        return reject(new Error(chrome.runtime.lastError?.message || 'Google Auth flow cancelled'))
+      }
+
+      try {
+        const urlObj = new URL(redirectedTo)
+        const hash = urlObj.hash.startsWith('#') ? urlObj.hash.substring(1) : urlObj.hash
+        const params = new URLSearchParams(hash || urlObj.search)
+
+        const accessToken = params.get('access_token')
+        const refreshToken = params.get('refresh_token')
+        const expiresIn = params.get('expires_in')
+
+        if (!accessToken) {
+          throw new Error('No access_token returned from Google OAuth redirect')
+        }
+
+        // Fetch user profile from Supabase with the token
+        const userRes = await fetch(`${url}/auth/v1/user`, {
+          headers: {
+            'apikey': key,
+            'Authorization': `Bearer ${accessToken}`
+          }
+        })
+
+        if (!userRes.ok) {
+          throw new Error('Failed to fetch user profile with Google OAuth token')
+        }
+
+        const user = await userRes.json()
+
+        const session = {
+          access_token: accessToken,
+          refresh_token: refreshToken || '',
+          expires_at: Date.now() + (parseInt(expiresIn || '3600', 10) * 1000)
+        }
+
+        await chrome.storage.local.set({
+          supabaseUrl: url,
+          supabaseAnonKey: key,
+          session,
+          user
+        })
+
+        resolve({ success: true, user })
+      } catch (err) {
+        reject(err)
+      }
+    })
+  })
 }
 
 // Matches recipient email and logs event to outreach_events table

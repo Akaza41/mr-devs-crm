@@ -1,12 +1,13 @@
 {
   "manifest_version": 3,
   "name": "MR.DEVS CRM — Outreach Verification",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Auto-verifies email and social outreach events for MR.DEVS CRM sales reps.",
   "permissions": [
     "storage",
     "activeTab",
-    "scripting"
+    "scripting",
+    "identity"
   ],
   "host_permissions": [
     "https://*.supabase.co/*",
