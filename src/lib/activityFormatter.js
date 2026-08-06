@@ -4,7 +4,7 @@ import { ACTIONS } from './activityActions'
  * Converts a raw activity_log record into a user-friendly string and title.
  * 
  * @param {object} log - The activity log record containing action and metadata.
- * @returns {object} - { title: string, details: string }
+ * @returns {object} - { title: string, details: string, isAutoDetected?: boolean }
  */
 export function formatActivityDetails(log) {
   const meta = log.metadata || {}
@@ -29,6 +29,18 @@ export function formatActivityDetails(log) {
       return {
         title: 'Imported Excel',
         details: `Imported ${meta.inserted || 0} leads from '${meta.file_name || 'file'}'`
+      }
+    case ACTIONS.TOUCH_LOGGED:
+      return {
+        title: `Touch #${meta.sequence_number || 1} Logged`,
+        details: `${(meta.channel || 'outreach').toUpperCase()} (${meta.outcome || 'completed'})`
+      }
+    case ACTIONS.EXTENSION_EVENT_LOGGED:
+    case 'lead.extension_event':
+      return {
+        title: '📧 Auto-detected via extension',
+        details: meta.subject_line ? `Sent email: "${meta.subject_line}"` : `Outreach detected on ${meta.channel || 'Gmail'}`,
+        isAutoDetected: true
       }
     case ACTIONS.PROJECT_CREATED:
       return {
@@ -71,10 +83,9 @@ export function formatActivityDetails(log) {
         details: 'Started a new session'
       }
     default:
-      // Fallback for any future or unrecognized actions
       return {
         title: log.action ? log.action.replace(/_/g, ' ') : 'System Action',
-        details: 'Performed an action'
+        details: meta.detail || 'Performed an action'
       }
   }
 }

@@ -65,7 +65,7 @@ export default function LeadsTable({ role, leads, customColumns = [], onEdit, on
   const [copiedCell, setCopiedCell] = useState(null)
   const [colMenuOpen, setColMenuOpen] = useState(false)
 
-  // Default visible columns as per Step 4 requirements
+  // Default visible columns
   const [visibleCols, setVisibleCols] = useState({
     hospital_name: true,
     type: true,
@@ -73,6 +73,7 @@ export default function LeadsTable({ role, leads, customColumns = [], onEdit, on
     phone: true,
     priority: true,
     stage: true,
+    next_followup_due: true,
     // Hidden by default:
     reviews: false,
     number_type: false,
@@ -158,6 +159,7 @@ export default function LeadsTable({ role, leads, customColumns = [], onEdit, on
   }
 
   const optionalColsConfig = [
+    { key: 'next_followup_due', label: 'Next Follow-Up' },
     { key: 'reviews', label: 'Reviews' },
     { key: 'number_type', label: 'Number Type' },
     { key: 'website', label: 'Website' },
@@ -235,6 +237,7 @@ export default function LeadsTable({ role, leads, customColumns = [], onEdit, on
               {visibleCols.website && <th style={{ padding: '10px 16px', color: '#ededed', fontWeight: '500' }}>Website</th>}
               {visibleCols.priority && <th style={{ padding: '10px 16px', color: '#ededed', fontWeight: '500' }}>Priority</th>}
               {visibleCols.stage && <th style={{ padding: '10px 16px', color: '#ededed', fontWeight: '500' }}>Stage</th>}
+              {visibleCols.next_followup_due && <th style={{ padding: '10px 16px', color: '#ededed', fontWeight: '500' }}>Next Follow-Up</th>}
               {visibleCols.fb && <th style={{ padding: '10px 16px', color: '#ededed', fontWeight: '500' }}>FB</th>}
               {visibleCols.contacted && <th style={{ padding: '10px 16px', color: '#ededed', fontWeight: '500' }}>Contacted</th>}
               {visibleCols.reply && <th style={{ padding: '10px 16px', color: '#ededed', fontWeight: '500' }}>Reply</th>}
@@ -300,6 +303,18 @@ export default function LeadsTable({ role, leads, customColumns = [], onEdit, on
 
                 {visibleCols.stage && (
                   <Cell id={`${i}-stage`} textToCopy={lead.stage || 'New'}><StageBadge v={lead.stage} /></Cell>
+                )}
+
+                {visibleCols.next_followup_due && (
+                  <Cell id={`${i}-due`} textToCopy={lead.next_followup_due}>
+                    {lead.next_followup_due ? (
+                      <span style={{ fontSize: '12px', color: '#3ecf8e', fontFamily: 'monospace' }}>
+                        {new Date(lead.next_followup_due).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                      </span>
+                    ) : (
+                      <span style={{ color: '#8a8a85', fontSize: '12px' }}>—</span>
+                    )}
+                  </Cell>
                 )}
 
                 {visibleCols.fb && (

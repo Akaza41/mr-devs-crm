@@ -9,6 +9,8 @@ export const ACTIONS = {
   LEAD_UPDATED:    'LEAD_UPDATED',
   LEAD_DELETED:    'LEAD_DELETED',
   LEAD_IMPORTED:   'LEAD_IMPORTED',
+  TOUCH_LOGGED:    'lead.touch_logged',
+  EXTENSION_EVENT_LOGGED: 'extension.event_logged',
 
   // Project operations
   PROJECT_CREATED: 'PROJECT_CREATED',

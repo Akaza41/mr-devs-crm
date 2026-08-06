@@ -6,6 +6,7 @@ import { ACTIONS } from '../lib/activityActions'
 export default function SettingsPage({ userProfile, onBack }) {
   const [loading, setLoading] = useState(false)
   const [profileLoading, setProfileLoading] = useState(false)
+  const [cadenceLoading, setCadenceLoading] = useState(false)
   const [toast, setToast] = useState('')
   const [password, setPassword] = useState('')
   const [fullName, setFullName] = useState('')
@@ -14,6 +15,11 @@ export default function SettingsPage({ userProfile, onBack }) {
   const [bio, setBio] = useState('')
   const [specialtiesInput, setSpecialtiesInput] = useState('')
   const [avatarUrl, setAvatarUrl] = useState('')
+
+  // Cadence Settings State
+  const [noAnswerDays, setNoAnswerDays] = useState(2)
+  const [voicemailDays, setVoicemailDays] = useState(2)
+  const [answeredDays, setAnsweredDays] = useState(4)
 
   useEffect(() => {
     if (userProfile) {
@@ -25,6 +31,28 @@ export default function SettingsPage({ userProfile, onBack }) {
       setAvatarUrl(userProfile.avatar_url || '')
     }
   }, [userProfile])
+
+  useEffect(() => {
+    fetchCadenceSettings()
+  }, [])
+
+  const fetchCadenceSettings = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('cadence_settings')
+        .select('*')
+        .eq('id', 1)
+        .maybeSingle()
+
+      if (!error && data) {
+        setNoAnswerDays(data.no_answer_days ?? 2)
+        setVoicemailDays(data.voicemail_days ?? 2)
+        setAnsweredDays(data.answered_days ?? 4)
+      }
+    } catch (err) {
+      console.warn('Cadence settings fetch error:', err)
+    }
+  }
 
   const showToast = (msg) => {
     setToast(msg)
@@ -82,6 +110,36 @@ export default function SettingsPage({ userProfile, onBack }) {
       })
     }
     setLoading(false)
+  }
+
+  const handleCadenceUpdate = async (e) => {
+    e.preventDefault()
+    setCadenceLoading(true)
+
+    const payload = {
+      id: 1,
+      no_answer_days: parseInt(noAnswerDays, 10) || 2,
+      voicemail_days: parseInt(voicemailDays, 10) || 2,
+      answered_days: parseInt(answeredDays, 10) || 4,
+      updated_at: new Date().toISOString()
+    }
+
+    const { error } = await supabase
+      .from('cadence_settings')
+      .upsert(payload)
+
+    if (error) {
+      showToast('Error saving cadence settings: ' + error.message)
+    } else {
+      showToast('Follow-up cadence rules saved')
+      logActivity({
+        action: ACTIONS.SETTINGS_UPDATED || 'settings.updated',
+        entityType: 'settings',
+        entityId: 'cadence',
+        metadata: { no_answer_days: noAnswerDays, voicemail_days: voicemailDays, answered_days: answeredDays }
+      })
+    }
+    setCadenceLoading(false)
   }
 
   return (
@@ -200,6 +258,86 @@ export default function SettingsPage({ userProfile, onBack }) {
               <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
                 <button type="submit" className="btn-primary" disabled={profileLoading}>
                   {profileLoading ? 'Saving...' : 'Save Profile Changes'}
+                </button>
+              </div>
+
+            </form>
+          </div>
+        </section>
+
+        {/* Follow-Up Cadence Rules Section */}
+        <section>
+          <h2 style={{ fontSize: '15px', fontWeight: '600', color: '#8a8a85', marginBottom: '16px', borderBottom: '0.5px solid #232323', paddingBottom: '8px' }}>
+            Follow-Up Cadence Intervals
+          </h2>
+          <div className="card" style={{ padding: '24px', background: '#161616', border: '0.5px solid #232323', borderRadius: '12px' }}>
+            <p style={{ fontSize: '12px', color: '#8a8a85', marginTop: 0, marginBottom: '20px' }}>
+              Configure automatic follow-up delay intervals (in days) applied when reps log outreach touches.
+            </p>
+            <form onSubmit={handleCadenceUpdate} style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+              
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '16px' }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: '12px', color: '#ededed', fontWeight: '600', marginBottom: '6px' }}>
+                    No Answer Interval
+                  </label>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <input
+                      type="number"
+                      min="1"
+                      max="30"
+                      className="input-base"
+                      value={noAnswerDays}
+                      onChange={e => setNoAnswerDays(e.target.value)}
+                      style={{ width: '80px' }}
+                    />
+                    <span style={{ fontSize: '12px', color: '#8a8a85' }}>days</span>
+                  </div>
+                  <span style={{ fontSize: '11px', color: '#8a8a85', marginTop: '4px', display: 'block' }}>Default: 2 days</span>
+                </div>
+
+                <div>
+                  <label style={{ display: 'block', fontSize: '12px', color: '#ededed', fontWeight: '600', marginBottom: '6px' }}>
+                    Voicemail Interval
+                  </label>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <input
+                      type="number"
+                      min="1"
+                      max="30"
+                      className="input-base"
+                      value={voicemailDays}
+                      onChange={e => setVoicemailDays(e.target.value)}
+                      style={{ width: '80px' }}
+                    />
+                    <span style={{ fontSize: '12px', color: '#8a8a85' }}>days</span>
+                  </div>
+                  <span style={{ fontSize: '11px', color: '#8a8a85', marginTop: '4px', display: 'block' }}>Default: 2 days</span>
+                </div>
+
+                <div>
+                  <label style={{ display: 'block', fontSize: '12px', color: '#ededed', fontWeight: '600', marginBottom: '6px' }}>
+                    Answered (No Conv.)
+                  </label>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <input
+                      type="number"
+                      min="1"
+                      max="30"
+                      className="input-base"
+                      value={answeredDays}
+                      onChange={e => setAnsweredDays(e.target.value)}
+                      style={{ width: '80px' }}
+                    />
+                    <span style={{ fontSize: '12px', color: '#8a8a85' }}>days</span>
+                  </div>
+                  <span style={{ fontSize: '11px', color: '#8a8a85', marginTop: '4px', display: 'block' }}>Default: 4 days</span>
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                <button type="submit" className="btn-primary" disabled={cadenceLoading} style={{ background: '#3ecf8e', color: '#000', fontWeight: '600' }}>
+                  {cadenceLoading ? 'Saving Rules...' : 'Save Cadence Intervals'}
                 </button>
               </div>
 

@@ -27,6 +27,7 @@ export default function LeftNav({
     { key: 'leads', label: 'Leads Pipeline', icon: '📊', visible: true },
     { key: 'leaderboard', label: 'Leaderboard', icon: '🏆', visible: true },
     { key: 'chat', label: 'Team Chat', icon: '💬', visible: true, badge: '💬' },
+    { key: 'extension_activity', label: 'Extension Activity', icon: '⚡', visible: showAdminUsersTab },
     { key: 'team', label: 'Team Directory', icon: '👥', visible: showTeamTab },
     { key: 'users', label: 'Users & Invites', icon: '👤', visible: showAdminUsersTab },
     { key: 'settings', label: 'Settings', icon: '⚙️', visible: true },

@@ -17,6 +17,7 @@ import EmployeeProfilePage from './EmployeeProfilePage'
 import SettingsPage from './SettingsPage'
 import LeaderboardPage from './LeaderboardPage'
 import UsersPage from './UsersPage'
+import ExtensionActivityPage from './ExtensionActivityPage'
 import { canManageProjects, canManageInvites } from '../lib/permissions'
 import { useRouting } from '../lib/useRouting'
 import { logActivity } from '../lib/activityLogger'
@@ -43,110 +44,60 @@ export default function Dashboard({ userProfile, role, onLogout }) {
   const [customColumns, setCustomColumns] = useState([])
   const [editingLead, setEditingLead] = useState(null)
   const [toast, setToast] = useState('')
-  const [onlineUserIds, setOnlineUserIds] = useState(new Set())
+  const [onlineUserIds, setOnlineUserIds] = useState([])
 
-  const fileInputRef = useRef(null)
+  const leadsRef = useRef(leads)
   const historyRef = useRef([])
   const futureRef = useRef([])
-  const leadsRef = useRef([])
 
-  useEffect(() => { 
-    fetchCustomColumns()
+  useEffect(() => {
     fetchProjects()
+    fetchCustomColumns()
   }, [])
 
-  // ── Realtime Presence ──
+  useEffect(() => {
+    if (activeProject) fetchLeads()
+  }, [activeProject])
+
   useEffect(() => {
     if (!userProfile) return
-    const channel = supabase.channel('team-presence')
-
+    const channel = supabase.channel('online-users', {
+      config: { presence: { key: userProfile.id } }
+    })
     channel
       .on('presence', { event: 'sync' }, () => {
         const state = channel.presenceState()
-        const ids = new Set()
-        for (const key in state) {
-          state[key].forEach(presence => {
-            if (presence.user_id) ids.add(presence.user_id)
-          })
-        }
-        setOnlineUserIds(ids)
+        setOnlineUserIds(Object.keys(state))
       })
       .subscribe(async (status) => {
         if (status === 'SUBSCRIBED') {
-          await channel.track({ user_id: userProfile.id })
+          await channel.track({ online_at: new Date().toISOString() })
         }
       })
-
-    return () => {
-      supabase.removeChannel(channel)
-    }
+    return () => { supabase.removeChannel(channel) }
   }, [userProfile])
 
   async function fetchProjects() {
-    setLoading(true)
     const { data } = await supabase.from('projects').select('*').order('created_at', { ascending: true })
     if (data && data.length > 0) {
       setProjects(data)
-      const lastId = localStorage.getItem('mrdevs_last_project')
-      const active = data.find(p => p.id === lastId) || data[0]
-      setActiveProject(active)
-    } else {
-      setProjects([])
-      setActiveProject(null)
-      setLoading(false)
+      if (!activeProject) setActiveProject(data[0])
     }
   }
 
-  const fetchLeads = async (ignoreFlag = { current: false }) => {
+  async function fetchLeads() {
     if (!activeProject) return
     setLoading(true)
-
-    let query = supabase.from('leads').select('*').eq('project_id', activeProject.id)
-
-    if ((role === 'sales' || role === 'lead generator') && userProfile?.id) {
-      query = query.or(`assigned_to.eq.${userProfile.id},assigned_to.is.null,created_by.eq.${userProfile.id}`)
-    }
-
-    const { data, error } = await query
-    if (!error && !ignoreFlag.current) {
-      const order = { High: 0, Medium: 1, Low: 2 }
-      const sorted = data.sort((a, b) => {
-        if (order[a.priority] !== order[b.priority]) return order[a.priority] - order[b.priority]
-        return (b.rating || 0) - (a.rating || 0)
-      })
-      setLeads(sorted)
-      leadsRef.current = sorted
-      historyRef.current = []
-      futureRef.current = []
-    }
-    if (!ignoreFlag.current) setLoading(false)
+    const { data } = await supabase.from('leads').select('*').eq('project_id', activeProject.id).order('id', { ascending: true })
+    const fetched = data || []
+    updateLeads(fetched)
+    setLoading(false)
   }
-
-  useEffect(() => {
-    const ignoreFlag = { current: false }
-    if (activeProject) {
-      localStorage.setItem('mrdevs_last_project', activeProject.id)
-      fetchLeads(ignoreFlag)
-    }
-    return () => { ignoreFlag.current = true }
-  }, [activeProject])
 
   async function fetchCustomColumns() {
     const { data } = await supabase.from('custom_columns').select('*').order('created_at', { ascending: true })
     if (data) setCustomColumns(data)
   }
-
-  function handleFileChange(e) {
-    const file = e.target.files[0]
-    if (file) {
-      setImportFile(file)
-      e.target.value = ''
-    }
-  }
-
-  useEffect(() => {
-    leadsRef.current = leads
-  }, [leads])
 
   const showToast = (msg) => {
     setToast(msg)
@@ -336,49 +287,62 @@ export default function Dashboard({ userProfile, role, onLogout }) {
       }
     }
     setProjectModalOpen(false)
+    setEditingProject(null)
   }
 
   const handleDeleteProject = async (project) => {
-    if (!window.confirm(`Are you sure you want to delete the project "${project.name}" and all its leads?`)) return
-    const { error } = await supabase.from('projects').delete().eq('id', project.id)
-    if (!error) {
-      const remaining = projects.filter(p => p.id !== project.id)
-      setProjects(remaining)
-      if (activeProject?.id === project.id) {
-        setActiveProject(remaining.length > 0 ? remaining[0] : null)
-      }
-      showToast('Project deleted')
-
-      logActivity({
-        action: ACTIONS.PROJECT_DELETED,
-        entityType: 'project',
-        entityId: project.id,
-        metadata: { project_name: project.name },
-      })
-    } else {
-      showToast('Error deleting project: ' + error.message)
+    if (projects.length <= 1) {
+      alert('Cannot delete the only project.')
+      return
     }
+    if (!window.confirm(`Delete project "${project.name}" and all its leads?`)) return
+    
+    const { error } = await supabase.from('projects').delete().eq('id', project.id)
+    if (error) {
+      showToast('Error deleting project: ' + error.message)
+      return
+    }
+
+    logActivity({
+      action: ACTIONS.PROJECT_DELETED,
+      entityType: 'project',
+      entityId: project.id,
+      metadata: { project_name: project.name },
+    })
+
+    const remaining = projects.filter(p => p.id !== project.id)
+    setProjects(remaining)
+    if (activeProject?.id === project.id) {
+      setActiveProject(remaining[0])
+    }
+    showToast('Project deleted')
+  }
+
+  const handleUpdateLeadState = (updatedLead) => {
+    const updatedLeads = leadsRef.current.map(l => l.id === updatedLead.id ? updatedLead : l)
+    updateLeads(updatedLeads)
   }
 
   return (
-    <div style={{ minHeight: '100vh', background: '#0d0d10' }} className="flex flex-col md:flex-row">
-
+    <div className="flex flex-col md:flex-row min-h-screen" style={{ background: '#0f0f0f' }}>
+      
+      {/* Toast Notification */}
       {toast && (
-        <div style={{ position: 'fixed', bottom: '24px', left: '50%', transform: 'translateX(-50%)', background: '#151518', border: '1px solid #3ecf8e', borderRadius: '10px', padding: '10px 20px', color: '#3ecf8e', fontSize: '13px', zIndex: 999, boxShadow: '0 10px 30px rgba(0,0,0,0.5)' }}>
+        <div style={{ position: 'fixed', bottom: '24px', right: '24px', background: '#161616', border: '0.5px solid #3ecf8e', borderRadius: '8px', padding: '10px 16px', color: '#3ecf8e', fontSize: '13px', zIndex: 1000, boxShadow: '0 4px 20px rgba(0,0,0,0.5)' }}>
           {toast}
         </div>
       )}
 
-      {/* ── ROLE-AWARE LEFT SIDEBAR NAVIGATION ── */}
+      {/* Sidebar Navigation */}
       <LeftNav
         userProfile={userProfile}
         role={role}
         currentView={currentView}
-        onNavigate={(view) => navigate(view)}
+        onNavigate={navigate}
         onLogout={onLogout}
         projects={projects}
         activeProject={activeProject}
-        onChangeProject={setActiveProject}
+        onChangeProject={(p) => setActiveProject(p)}
         onEditProject={(p) => { setEditingProject(p); setProjectModalOpen(true) }}
         onDeleteProject={handleDeleteProject}
         onNewProject={() => { setEditingProject(null); setProjectModalOpen(true) }}
@@ -386,125 +350,66 @@ export default function Dashboard({ userProfile, role, onLogout }) {
         canGoBack={canGoBack}
       />
 
-      {/* ── MAIN WORKSPACE CONTENT ── */}
-      <main style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, overflowX: 'hidden' }}>
-
-        {projects.length === 0 ? (
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100vh', gap: '16px' }}>
-            <div style={{ fontSize: '18px', color: '#f5f5f0', fontWeight: '500' }}>Create your first project to get started</div>
-            {canManageProjects(role) ? (
-              <button className="btn-primary" onClick={() => { setEditingProject(null); setProjectModalOpen(true) }}>+ New Project</button>
-            ) : (
-              <div style={{ color: '#8a8a85', fontSize: '13px' }}>No projects exist yet. Ask an admin to create one.</div>
-            )}
-          </div>
+      {/* Main View Area */}
+      <main style={{ flex: 1, padding: '24px', overflowY: 'auto', minWidth: 0 }}>
+        
+        {loading ? (
+          <SkeletonTable />
         ) : (
-          <div style={{ padding: '24px', flex: 1 }}>
+          <div style={{ maxWidth: '1400px', margin: '0 auto' }}>
             
-            {/* LEADS VIEW */}
+            {/* LEADS PIPELINE VIEW */}
             {currentView === 'leads' && (
               <>
-                <Toolbar
-                  role={role}
-                  currentView={currentView}
-                  setCurrentView={(view) => navigate(view)}
-                  search={search} setSearch={setSearch}
-                  filterPriority={filterPriority} setFilterPriority={setFilterPriority}
-                  filterContacted={filterContacted} setFilterContacted={setFilterContacted}
-                  filterNumber={filterNumber} setFilterNumber={setFilterNumber}
-                  onAddLead={() => { setEditingLead(null); setModalOpen(true) }}
-                  onManageColumns={() => setColManagerOpen(true)}
-                  onImportClick={() => fileInputRef?.current?.click()}
-                />
-
-                {/* ── 1. TODAY'S QUEUE PANEL (PRIORITY ACTION ITEMS) ── */}
                 <TodaysQueue
                   leads={leads}
                   currentUserProfile={userProfile}
                   activeProject={activeProject}
-                  onUpdateLead={(updatedLead) => {
-                    updateLeads(leads.map(l => l.id === updatedLead.id ? updatedLead : l))
-                  }}
+                  onUpdateLead={handleUpdateLeadState}
                   showToast={showToast}
                 />
 
-                {/* ── 2. PIPELINE FUNNEL (COMPACT STRIP) ── */}
                 <PipelineFunnel
                   leads={leads}
                   activeStageFilter={activeStageFilter}
-                  onSelectStage={(stage) => setActiveStageFilter(stage)}
+                  onSelectStageFilter={(stage) => setActiveStageFilter(stage)}
                 />
 
-                <input type="file" accept=".xlsx,.csv" ref={fileInputRef} style={{ display: 'none' }} onChange={handleFileChange} />
+                <Toolbar
+                  role={role}
+                  search={search}
+                  onSearchChange={setSearch}
+                  filterPriority={filterPriority}
+                  onPriorityChange={setFilterPriority}
+                  filterContacted={filterContacted}
+                  onContactedChange={setFilterContacted}
+                  filterNumber={filterNumber}
+                  onNumberChange={setFilterNumber}
+                  onAddLead={() => { setEditingLead(null); setModalOpen(true) }}
+                  onManageCols={() => setColManagerOpen(true)}
+                  onImportClick={(file) => setImportFile(file)}
+                />
 
-                {/* ── 3. DATA QUALITY SIGNAL BANNER ── */}
-                {(() => {
-                  const noNumCount = leads.filter(l => !l.phone || l.phone === '—' || l.number_type === 'No Number').length
-                  if (noNumCount > 0 && leads.length > 0) {
-                    return (
-                      <div style={{
-                        background: 'rgba(239, 68, 68, 0.08)',
-                        border: '1px solid rgba(239, 68, 68, 0.25)',
-                        borderRadius: '10px',
-                        padding: '10px 16px',
-                        marginBottom: '16px',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justify: 'space-between',
-                        gap: '12px',
-                        fontSize: '12px',
-                        color: '#f87171'
-                      }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                          <span style={{ fontSize: '15px' }}>⚠️</span>
-                          <span>
-                            <strong>Data Quality Alert:</strong> {noNumCount} of {leads.length} leads have no phone number — add manually or re-import to enable calling.
-                          </span>
-                        </div>
-                        {role === 'admin' || role === 'manager' ? (
-                          <button
-                            onClick={() => fileInputRef?.current?.click()}
-                            style={{
-                              background: 'rgba(239, 68, 68, 0.15)',
-                              border: '1px solid rgba(239, 68, 68, 0.3)',
-                              color: '#f87171',
-                              borderRadius: '6px',
-                              padding: '4px 10px',
-                              fontSize: '11px',
-                              fontWeight: '600',
-                              cursor: 'pointer',
-                              whiteSpace: 'nowrap'
-                            }}
-                          >
-                            Re-import
-                          </button>
-                        ) : null}
-                      </div>
-                    )
-                  }
-                  return null
-                })()}
-
-                {/* ── 4. LEADS REFERENCE TABLE ── */}
-                {loading ? (
-                  <SkeletonTable rows={6} />
-                ) : (
-                  <LeadsTable
-                    role={role}
-                    leads={filteredLeads}
-                    customColumns={customColumns}
-                    onEdit={l => { setEditingLead(l); setModalOpen(true) }}
-                    onDelete={handleDelete}
-                    onImportClick={() => fileInputRef?.current?.click()}
-                    onAddLead={() => { setEditingLead(null); setModalOpen(true) }}
-                  />
-                )}
+                <LeadsTable
+                  role={role}
+                  leads={filteredLeads}
+                  customColumns={customColumns}
+                  onEdit={(lead) => { setEditingLead(lead); setModalOpen(true) }}
+                  onDelete={handleDelete}
+                  onImportClick={() => document.getElementById('excel-file-input')?.click()}
+                  onAddLead={() => { setEditingLead(null); setModalOpen(true) }}
+                />
               </>
             )}
 
             {/* TEAM CHAT VIEW */}
             {currentView === 'chat' && (
               <GlobalChatPage currentUserProfile={userProfile} onBack={goBack} />
+            )}
+
+            {/* EXTENSION ACTIVITY VIEW */}
+            {currentView === 'extension_activity' && (
+              <ExtensionActivityPage onBack={goBack} />
             )}
 
             {/* TEAM DIRECTORY VIEW */}

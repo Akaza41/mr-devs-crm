@@ -1,0 +1,33 @@
+{
+  "manifest_version": 3,
+  "name": "MR.DEVS CRM — Outreach Verification",
+  "version": "1.0.0",
+  "description": "Auto-verifies email and social outreach events for MR.DEVS CRM sales reps.",
+  "permissions": [
+    "storage",
+    "activeTab",
+    "scripting"
+  ],
+  "host_permissions": [
+    "https://*.supabase.co/*",
+    "https://mail.google.com/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://mail.google.com/*"
+      ],
+      "js": [
+        "gmail.js"
+      ],
+      "run_at": "document_idle"
+    }
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "MR.DEVS CRM Outreach Tracker"
+  }
+}

@@ -1,131 +1,211 @@
-import React, { useState, useMemo } from 'react'
+import React, { useState, useEffect, useMemo } from 'react'
 import { supabase } from '../lib/supabase'
 import { logActivity } from '../lib/activityLogger'
-import LogCallModal from './LogCallModal'
-import MarkRepliedModal from './MarkRepliedModal'
+import LogTouchModal from './LogTouchModal'
+
+const CHANNEL_ICONS = {
+  call: '📞 Call',
+  gmail: '✉️ Gmail',
+  linkedin: '💼 LinkedIn',
+  instagram: '📸 Instagram',
+  whatsapp: '💬 WhatsApp',
+  other: '🌐 Other'
+}
 
 export default function TodaysQueue({ leads = [], currentUserProfile, activeProject, onUpdateLead, showToast }) {
-  const [selectedCallLead, setSelectedCallLead] = useState(null)
-  const [selectedReplyLead, setSelectedReplyLead] = useState(null)
+  const [selectedTouchLead, setSelectedTouchLead] = useState(null)
+  const [touchesMap, setTouchesMap] = useState({})
+  const [cadenceSettings, setCadenceSettings] = useState({ no_answer_days: 2, voicemail_days: 2, answered_days: 4 })
 
-  // Determine actionable queue leads for current user
-  const queueLeads = useMemo(() => {
+  // Fetch cadence settings
+  useEffect(() => {
+    async function getCadence() {
+      try {
+        const { data, error } = await supabase
+          .from('cadence_settings')
+          .select('*')
+          .eq('id', 1)
+          .maybeSingle()
+        if (!error && data) {
+          setCadenceSettings({
+            no_answer_days: data.no_answer_days ?? 2,
+            voicemail_days: data.voicemail_days ?? 2,
+            answered_days: data.answered_days ?? 4,
+          })
+        }
+      } catch (err) {
+        console.warn('Could not fetch cadence settings:', err)
+      }
+    }
+    getCadence()
+  }, [])
+
+  // Fetch touch history for lead IDs in current project/assigned leads
+  useEffect(() => {
+    async function fetchTouchHistory() {
+      if (!leads || leads.length === 0) return
+
+      const leadIds = leads.map(l => l.id)
+      const { data, error } = await supabase
+        .from('outreach_touches')
+        .select('*')
+        .in('lead_id', leadIds)
+        .order('created_at', { ascending: true })
+
+      if (!error && data) {
+        // Group touches by lead_id
+        const map = {}
+        data.forEach(touch => {
+          if (!map[touch.lead_id]) map[touch.lead_id] = []
+          map[touch.lead_id].push(touch)
+        })
+        setTouchesMap(map)
+      }
+    }
+
+    fetchTouchHistory()
+  }, [leads])
+
+  // Compute sequence queue leads
+  const queueItems = useMemo(() => {
     if (!leads || leads.length === 0) return []
 
     const currentUserId = currentUserProfile?.id
+    const now = new Date()
 
-    // Filter leads assigned to user (or unassigned fallback if user has none)
+    // Filter leads assigned to user (or unassigned fallback)
     const userLeads = leads.filter(l => !currentUserId || l.assigned_to === currentUserId || !l.assigned_to)
 
-    const flagged = userLeads.map(lead => {
-      let reason = ''
-      let priorityScore = 0
-
-      const contacted = lead.contacted === 'Yes'
-      const isHigh = lead.priority === 'High'
-
-      // Check criteria (queue targets leads that need first contact)
-      if (isHigh && !contacted) {
-        reason = '🔥 High priority — needs first contact'
-        priorityScore = 3
-      } else if (!contacted) {
-        reason = '📌 Needs initial outreach'
-        priorityScore = 1
+    // Today's Queue query criteria:
+    // leads where next_followup_due <= now() OR (next_followup_due IS NULL and contacted != 'Yes')
+    const filtered = userLeads.filter(lead => {
+      if (lead.stage === 'Lost' || lead.stage === 'Converted') return false
+      
+      if (lead.next_followup_due) {
+        const dueDate = new Date(lead.next_followup_due)
+        return dueDate <= now
       }
 
-      return { lead, reason, priorityScore }
-    }).filter(item => item.reason !== '')
+      // Fallback for uncontacted leads without a set due date
+      return lead.contacted !== 'Yes'
+    })
 
-    // Sort by urgency and take top 5
-    return flagged.sort((a, b) => b.priorityScore - a.priorityScore).slice(0, 5)
-  }, [leads, currentUserProfile])
+    // Map each lead with its sequence number and last channel used
+    const mapped = filtered.map(lead => {
+      const priorTouches = touchesMap[lead.id] || []
+      const sequenceNumber = priorTouches.length + 1
+      const lastTouch = priorTouches.length > 0 ? priorTouches[priorTouches.length - 1] : null
+      const lastChannelLabel = lastTouch ? (CHANNEL_ICONS[lastTouch.channel] || lastTouch.channel) : 'First Touch'
 
-  const handleCallSubmit = async ({ outcome, notes, moveToContacted }) => {
-    if (!selectedCallLead) return
-    const lead = selectedCallLead
-    setSelectedCallLead(null)
+      let dueDateObj = lead.next_followup_due ? new Date(lead.next_followup_due) : null
+      let isOverdue = dueDateObj && dueDateObj < now
 
+      return {
+        lead,
+        sequenceNumber,
+        lastTouch,
+        lastChannelLabel,
+        dueDateObj,
+        isOverdue
+      }
+    })
+
+    // Sort soonest-due first (earliest due date at top; null due dates next)
+    return mapped.sort((a, b) => {
+      if (a.dueDateObj && b.dueDateObj) return a.dueDateObj - b.dueDateObj
+      if (a.dueDateObj) return -1
+      if (b.dueDateObj) return 1
+      return 0
+    })
+  }, [leads, currentUserProfile, touchesMap])
+
+  const handleTouchSubmit = async ({ channel, outcome, notes, nextFollowupDue, stage }) => {
+    if (!selectedTouchLead) return
+    const lead = selectedTouchLead
+    setSelectedTouchLead(null)
+
+    const userId = currentUserProfile?.id
+    const priorTouches = touchesMap[lead.id] || []
+    const nextSeqNum = priorTouches.length + 1
+
+    // 1. Insert into outreach_touches table
+    const touchPayload = {
+      lead_id: lead.id,
+      user_id: userId || null,
+      channel,
+      sequence_number: nextSeqNum,
+      outcome,
+      notes,
+      created_at: new Date().toISOString()
+    }
+
+    const { data: touchData, error: touchError } = await supabase
+      .from('outreach_touches')
+      .insert([touchPayload])
+      .select()
+      .single()
+
+    if (touchError) {
+      console.error('Error inserting touch:', touchError)
+    } else if (touchData) {
+      setTouchesMap(prev => ({
+        ...prev,
+        [lead.id]: [...(prev[lead.id] || []), touchData]
+      }))
+    }
+
+    // 2. Update lead record
     const updatedNotes = notes
-      ? (lead.notes ? `${lead.notes}\n[Call: ${outcome}] ${notes}` : `[Call: ${outcome}] ${notes}`)
+      ? (lead.notes ? `${lead.notes}\n[Touch #${nextSeqNum} - ${channel.toUpperCase()} (${outcome})]: ${notes}` : `[Touch #${nextSeqNum} - ${channel.toUpperCase()} (${outcome})]: ${notes}`)
       : lead.notes
 
     const updates = {
       contacted: 'Yes',
-      stage: moveToContacted ? 'Contacted' : lead.stage,
+      stage: stage || lead.stage,
+      next_followup_due: nextFollowupDue,
       notes: updatedNotes,
       updated_at: new Date().toISOString()
     }
 
-    // 1. Local state update (removes lead from queue immediately)
+    // Local state update
     onUpdateLead({ ...lead, ...updates })
-    if (showToast) showToast(`Call logged (${outcome}) for ${lead.hospital_name || lead.lead_name || 'Lead'}`)
 
-    // 2. Supabase update
-    const { error } = await supabase.from('leads').update(updates).eq('id', lead.id)
+    let toastMsg = `Touch #${nextSeqNum} logged (${outcome}) for ${lead.hospital_name || lead.lead_name || 'Lead'}`
+    if (nextFollowupDue) {
+      const formattedDue = new Date(nextFollowupDue).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+      toastMsg += ` • Next follow-up due: ${formattedDue}`
+    }
+    if (showToast) showToast(toastMsg)
 
-    // 3. Write to activity_logs via logActivity helper
-    if (!error) {
+    // Database update
+    const { error: leadError } = await supabase.from('leads').update(updates).eq('id', lead.id)
+
+    // Activity log
+    if (!leadError) {
       logActivity({
-        action: 'lead.call_logged',
+        action: 'lead.touch_logged',
         entityType: 'lead',
         entityId: lead.id,
         projectId: activeProject?.id,
-        metadata: { outcome, notes, moved_to_contacted: moveToContacted }
+        metadata: {
+          channel,
+          outcome,
+          sequence_number: nextSeqNum,
+          next_followup_due: nextFollowupDue,
+          new_stage: stage
+        }
       })
     }
   }
 
-  const handleReplySubmit = async ({ replyType, notes }) => {
-    if (!selectedReplyLead) return
-    const lead = selectedReplyLead
-    setSelectedReplyLead(null)
-
-    const updatedNotes = notes
-      ? (lead.notes ? `${lead.notes}\n[Reply: ${replyType}] ${notes}` : `[Reply: ${replyType}] ${notes}`)
-      : lead.notes
-
-    let newStage = lead.stage
-    if (replyType === 'Interested' || replyType === 'Requesting Info') {
-      newStage = 'Interested'
-    } else if (replyType === 'Not Interested') {
-      newStage = 'Lost'
-    }
-
-    const updates = {
-      reply: 'Yes',
-      contacted: 'Yes',
-      stage: newStage,
-      notes: updatedNotes,
-      updated_at: new Date().toISOString()
-    }
-
-    // 1. Local state update
-    onUpdateLead({ ...lead, ...updates })
-    if (showToast) showToast(`Reply marked (${replyType}) for ${lead.hospital_name || lead.lead_name || 'Lead'}`)
-
-    // 2. Supabase update
-    const { error } = await supabase.from('leads').update(updates).eq('id', lead.id)
-
-    // 3. Write to activity_logs via logActivity helper
-    if (!error) {
-      logActivity({
-        action: 'lead.reply_logged',
-        entityType: 'lead',
-        entityId: lead.id,
-        projectId: activeProject?.id,
-        metadata: { reply_type: replyType, notes }
-      })
-    }
-  }
-
-  if (queueLeads.length === 0) {
+  if (queueItems.length === 0) {
     return (
       <div style={{ background: '#1c1c20', border: '1px solid rgba(255, 255, 255, 0.08)', borderRadius: '14px', padding: '20px 24px', marginBottom: '24px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', boxShadow: '0 4px 20px rgba(0,0,0,0.35)' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
           <span style={{ fontSize: '20px' }}>🎉</span>
           <div>
             <h4 className="font-headline" style={{ margin: 0, fontSize: '14px', fontWeight: '700', color: '#f5f5f0' }}>Today's Queue Clear!</h4>
-            <span style={{ fontSize: '12px', color: '#8a8a85' }}>All assigned leads have recent outreach activity.</span>
+            <span style={{ fontSize: '12px', color: '#8a8a85' }}>No follow-ups due right now. Great job keeping outreach on cadence!</span>
           </div>
         </div>
       </div>
@@ -139,19 +219,19 @@ export default function TodaysQueue({ leads = [], currentUserProfile, activeProj
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
           <span style={{ fontSize: '16px' }}>⚡</span>
           <h3 className="font-headline" style={{ fontSize: '15px', fontWeight: '700', color: '#f5f5f0', margin: 0, letterSpacing: '0.03em' }}>
-            TODAY'S QUEUE ({queueLeads.length})
+            TODAY'S QUEUE ({queueItems.length})
           </h3>
         </div>
-        <span style={{ fontSize: '12px', color: '#8a8a85' }}>Action required follow-ups</span>
+        <span style={{ fontSize: '12px', color: '#8a8a85' }}>Multi-channel follow-up cadence queue</span>
       </div>
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-        {queueLeads.map(({ lead, reason }) => (
+        {queueItems.map(({ lead, sequenceNumber, lastChannelLabel, isOverdue, dueDateObj }) => (
           <div
             key={lead.id}
             style={{
               background: '#151518',
-              border: '1px solid rgba(255, 255, 255, 0.08)',
+              border: isOverdue ? '1px solid rgba(248, 113, 113, 0.3)' : '1px solid rgba(255, 255, 255, 0.08)',
               borderRadius: '10px',
               padding: '12px 16px',
               display: 'flex',
@@ -161,50 +241,49 @@ export default function TodaysQueue({ leads = [], currentUserProfile, activeProj
               flexWrap: 'wrap'
             }}
           >
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '3px', minWidth: '200px' }}>
-              <div style={{ fontWeight: '600', fontSize: '13px', color: '#f5f5f0' }}>
-                {lead.hospital_name || lead.lead_name || 'Unnamed Lead'}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', minWidth: '220px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <span style={{ fontWeight: '600', fontSize: '13px', color: '#f5f5f0' }}>
+                  {lead.hospital_name || lead.lead_name || 'Unnamed Lead'}
+                </span>
+                
+                {/* Sequence badge */}
+                <span style={{ background: 'rgba(62, 207, 142, 0.15)', color: '#3ecf8e', padding: '2px 8px', borderRadius: '12px', fontSize: '11px', fontWeight: '600' }}>
+                  Follow-up #{sequenceNumber}
+                </span>
               </div>
-              <div style={{ fontSize: '11px', color: '#8a8a85', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <span>{reason}</span>
+
+              <div style={{ fontSize: '11px', color: '#8a8a85', display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <span>Last channel: <strong style={{ color: '#ededed' }}>{lastChannelLabel}</strong></span>
                 {lead.phone && <span style={{ fontFamily: 'monospace', color: '#3ecf8e' }}>• {lead.phone}</span>}
+                {dueDateObj && (
+                  <span style={{ color: isOverdue ? '#f87171' : '#8a8a85', fontWeight: isOverdue ? '600' : '400' }}>
+                    • {isOverdue ? '⚠️ Overdue' : `Due ${dueDateObj.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`}
+                  </span>
+                )}
               </div>
             </div>
 
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
               <button
-                onClick={() => setSelectedCallLead(lead)}
-                className="btn-ghost"
-                style={{ padding: '6px 12px', fontSize: '11px', fontWeight: '600', background: 'rgba(62, 207, 142, 0.1)', color: '#3ecf8e', borderColor: 'rgba(62, 207, 142, 0.25)', cursor: 'pointer' }}
+                onClick={() => setSelectedTouchLead(lead)}
+                className="btn-primary"
+                style={{ padding: '7px 14px', fontSize: '12px', fontWeight: '600', background: '#3ecf8e', color: '#000', cursor: 'pointer', border: 'none', borderRadius: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}
               >
-                📞 Log Call
-              </button>
-              
-              <button
-                onClick={() => setSelectedReplyLead(lead)}
-                className="btn-ghost"
-                style={{ padding: '6px 12px', fontSize: '11px', fontWeight: '600', background: 'rgba(242, 184, 75, 0.1)', color: '#f2b84b', borderColor: 'rgba(242, 184, 75, 0.25)', cursor: 'pointer' }}
-              >
-                💬 Mark Replied
+                <span>⚡</span> Log Touch
               </button>
             </div>
           </div>
         ))}
       </div>
 
-      {selectedCallLead && (
-        <LogCallModal
-          lead={selectedCallLead}
-          onClose={() => setSelectedCallLead(null)}
-          onSubmit={handleCallSubmit}
-        />
-      )}
-
-      {selectedReplyLead && (
-        <MarkRepliedModal
-          lead={selectedReplyLead}
-          onClose={() => setSelectedReplyLead(null)}
-          onSubmit={handleReplySubmit}
+      {selectedTouchLead && (
+        <LogTouchModal
+          lead={selectedTouchLead}
+          project={activeProject}
+          cadenceSettings={cadenceSettings}
+          onClose={() => setSelectedTouchLead(null)}
+          onSubmit={handleTouchSubmit}
         />
       )}
 
