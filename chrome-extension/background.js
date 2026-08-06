@@ -1,7 +1,7 @@
 // MR.DEVS CRM Extension Service Worker (background.js)
 
-const DEFAULT_SUPABASE_URL = 'https://YOUR_SUPABASE_PROJECT.supabase.co'
-const DEFAULT_ANON_KEY = 'YOUR_SUPABASE_ANON_KEY'
+const DEFAULT_SUPABASE_URL = ''
+const DEFAULT_ANON_KEY = ''
 
 // Helper to get configuration and session
 async function getExtensionConfig() {
@@ -16,6 +16,14 @@ async function getExtensionConfig() {
 
 // Listen for message events from popup or content scripts
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  if (message.action === 'SAVE_CONFIG') {
+    chrome.storage.local.set({
+      supabaseUrl: message.supabaseUrl,
+      supabaseAnonKey: message.supabaseAnonKey
+    }, () => sendResponse({ success: true }))
+    return true
+  }
+
   if (message.action === 'LOGIN') {
     handleLogin(message.email, message.password, message.supabaseUrl, message.supabaseAnonKey)
       .then(res => sendResponse(res))
@@ -50,8 +58,13 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
 // Handles Supabase email/password login via REST Auth API
 async function handleLogin(email, password, customUrl, customKey) {
-  const url = (customUrl || DEFAULT_SUPABASE_URL).replace(/\/$/, '')
-  const key = customKey || DEFAULT_ANON_KEY
+  const config = await getExtensionConfig()
+  const url = (customUrl || config.supabaseUrl || '').replace(/\/$/, '')
+  const key = customKey || config.supabaseAnonKey || ''
+
+  if (!url || url.includes('YOUR_SUPABASE_PROJECT')) {
+    throw new Error('Supabase URL not configured. Expand "Supabase Endpoint Config" below to set it.')
+  }
 
   const response = await fetch(`${url}/auth/v1/token?grant_type=password`, {
     method: 'POST',
@@ -87,8 +100,13 @@ async function handleLogin(email, password, customUrl, customKey) {
 
 // Handles Google OAuth sign-in via chrome.identity & Supabase OAuth
 async function handleGoogleLogin(customUrl, customKey) {
-  const url = (customUrl || DEFAULT_SUPABASE_URL).replace(/\/$/, '')
-  const key = customKey || DEFAULT_ANON_KEY
+  const config = await getExtensionConfig()
+  const url = (customUrl || config.supabaseUrl || '').replace(/\/$/, '')
+  const key = customKey || config.supabaseAnonKey || ''
+
+  if (!url || url.includes('YOUR_SUPABASE_PROJECT')) {
+    throw new Error('Supabase URL not configured. Please expand "Supabase Endpoint Config" below to set your project URL.')
+  }
 
   // Use chrome.identity to get redirect URI (e.g. https://<ext-id>.chromiumapp.org/)
   const redirectUrl = chrome.identity.getRedirectURL()
@@ -99,8 +117,11 @@ async function handleGoogleLogin(customUrl, customKey) {
       url: authUrl,
       interactive: true
     }, async (redirectedTo) => {
-      if (chrome.runtime.lastError || !redirectedTo) {
-        return reject(new Error(chrome.runtime.lastError?.message || 'Google Auth flow cancelled'))
+      if (chrome.runtime.lastError) {
+        return reject(new Error(chrome.runtime.lastError.message || 'Google Auth cancelled'))
+      }
+      if (!redirectedTo) {
+        return reject(new Error('Google Auth window closed before completion'))
       }
 
       try {

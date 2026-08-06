@@ -45,6 +45,22 @@
         <button type="submit" class="btn-primary" id="loginBtn">Sign In with Password</button>
       </form>
     </div>
+
+    <!-- Optional Config Collapsible -->
+    <details style="margin-top: 10px;">
+      <summary style="font-size: 11px; color: #8a8a85; cursor: pointer; user-select: none;">⚙️ Supabase Endpoint Config</summary>
+      <div className="card" style="margin-top: 8px; padding: 10px; background: #151518; border-radius: 8px;">
+        <div class="form-group">
+          <label>Supabase Project URL</label>
+          <input type="text" id="configUrl" placeholder="https://xyz.supabase.co">
+        </div>
+        <div class="form-group">
+          <label>Supabase Anon Key</label>
+          <input type="password" id="configKey" placeholder="eyJhbGci...">
+        </div>
+        <button type="button" id="saveConfigBtn" class="btn-ghost" style="width: 100%;">Save Config</button>
+      </div>
+    </details>
   </div>
 
   <!-- DASHBOARD VIEW -->

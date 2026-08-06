@@ -9,6 +9,10 @@ document.addEventListener('DOMContentLoaded', () => {
   const loginBtn = document.getElementById('loginBtn')
   const googleLoginBtn = document.getElementById('googleLoginBtn')
   const errorBanner = document.getElementById('errorBanner')
+
+  const configUrl = document.getElementById('configUrl')
+  const configKey = document.getElementById('configKey')
+  const saveConfigBtn = document.getElementById('saveConfigBtn')
   
   const repName = document.getElementById('repName')
   const repEmail = document.getElementById('repEmail')
@@ -26,14 +30,43 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
-  // Load session status
-  chrome.runtime.sendMessage({ action: 'GET_SESSION' }, (response) => {
-    if (response && response.session && response.user) {
-      showDashboard(response.user, response)
-    } else {
-      showLogin()
+  // Safely check session status
+  function checkSession() {
+    chrome.runtime.sendMessage({ action: 'GET_SESSION' }, (response) => {
+      if (chrome.runtime.lastError) {
+        // Ignore port closure warning
+        return
+      }
+      if (response && response.supabaseUrl && configUrl) {
+        configUrl.value = response.supabaseUrl
+      }
+      if (response && response.supabaseAnonKey && configKey) {
+        configKey.value = response.supabaseAnonKey
+      }
+      if (response && response.session && response.user) {
+        showDashboard(response.user, response)
+      } else {
+        showLogin()
+      }
+    })
+  }
+
+  // Listen for session storage updates (e.g. after Google OAuth popup flow finishes)
+  chrome.storage.onChanged.addListener((changes, areaName) => {
+    if (areaName === 'local') {
+      if (changes.session?.newValue && changes.user?.newValue) {
+        showDashboard(changes.user.newValue, {
+          supabaseUrl: configUrl ? configUrl.value : '',
+          supabaseAnonKey: configKey ? configKey.value : '',
+          session: changes.session.newValue
+        })
+      } else if (changes.session && !changes.session.newValue) {
+        showLogin()
+      }
     }
   })
+
+  checkSession()
 
   function showLogin() {
     loginView.style.display = 'block'
@@ -51,6 +84,24 @@ document.addEventListener('DOMContentLoaded', () => {
     repEmail.textContent = user.email || ''
 
     fetchRepStats(user, config)
+  }
+
+  // Save manual Supabase Endpoint Config
+  if (saveConfigBtn) {
+    saveConfigBtn.addEventListener('click', () => {
+      const url = configUrl.value.trim()
+      const key = configKey.value.trim()
+      chrome.runtime.sendMessage({
+        action: 'SAVE_CONFIG',
+        supabaseUrl: url,
+        supabaseAnonKey: key
+      }, (res) => {
+        if (!chrome.runtime.lastError && res && res.success) {
+          showError('')
+          alert('Supabase endpoint config saved!')
+        }
+      })
+    })
   }
 
   // Fetch today's outreach events count & list from Supabase
@@ -108,7 +159,12 @@ document.addEventListener('DOMContentLoaded', () => {
       googleLoginBtn.disabled = true
       googleLoginBtn.textContent = 'Connecting Google...'
 
-      chrome.runtime.sendMessage({ action: 'GOOGLE_LOGIN' }, (res) => {
+      chrome.runtime.sendMessage({
+        action: 'GOOGLE_LOGIN',
+        supabaseUrl: configUrl ? configUrl.value.trim() : '',
+        supabaseAnonKey: configKey ? configKey.value.trim() : ''
+      }, (res) => {
+        const lastErr = chrome.runtime.lastError
         googleLoginBtn.disabled = false
         googleLoginBtn.innerHTML = `
           <svg width="14" height="14" viewBox="0 0 24 24">
@@ -120,9 +176,17 @@ document.addEventListener('DOMContentLoaded', () => {
           Sign in with Google
         `
 
+        if (lastErr) {
+          // Message port closed because popup window lost focus when Google login launched.
+          // That is normal for extensions; storage listener will catch completed session.
+          return
+        }
+
         if (res && res.success) {
           chrome.runtime.sendMessage({ action: 'GET_SESSION' }, (config) => {
-            showDashboard(res.user, config)
+            if (!chrome.runtime.lastError && config && config.user) {
+              showDashboard(config.user, config)
+            }
           })
         } else {
           showError(res?.error || 'Google Sign-in failed')
@@ -141,14 +205,24 @@ document.addEventListener('DOMContentLoaded', () => {
     chrome.runtime.sendMessage({
       action: 'LOGIN',
       email: loginEmail.value.trim(),
-      password: loginPassword.value
+      password: loginPassword.value,
+      supabaseUrl: configUrl ? configUrl.value.trim() : '',
+      supabaseAnonKey: configKey ? configKey.value.trim() : ''
     }, (res) => {
+      const lastErr = chrome.runtime.lastError
       loginBtn.disabled = false
       loginBtn.textContent = 'Sign In with Password'
 
+      if (lastErr) {
+        showError('Connection error: ' + lastErr.message)
+        return
+      }
+
       if (res && res.success) {
         chrome.runtime.sendMessage({ action: 'GET_SESSION' }, (config) => {
-          showDashboard(res.user, config)
+          if (!chrome.runtime.lastError && config && config.user) {
+            showDashboard(config.user, config)
+          }
         })
       } else {
         showError(res?.error || 'Authentication failed')
