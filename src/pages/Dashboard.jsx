@@ -417,14 +417,7 @@ export default function Dashboard({ userProfile, role, onLogout }) {
                   onImportClick={() => fileInputRef?.current?.click()}
                 />
 
-                {/* ── STEP 1: PIPELINE FUNNEL ── */}
-                <PipelineFunnel
-                  leads={leads}
-                  activeStageFilter={activeStageFilter}
-                  onSelectStage={(stage) => setActiveStageFilter(stage)}
-                />
-
-                {/* ── STEP 2: TODAY'S QUEUE PANEL ── */}
+                {/* ── 1. TODAY'S QUEUE PANEL (PRIORITY ACTION ITEMS) ── */}
                 <TodaysQueue
                   leads={leads}
                   currentUserProfile={userProfile}
@@ -435,9 +428,64 @@ export default function Dashboard({ userProfile, role, onLogout }) {
                   showToast={showToast}
                 />
 
+                {/* ── 2. PIPELINE FUNNEL (COMPACT STRIP) ── */}
+                <PipelineFunnel
+                  leads={leads}
+                  activeStageFilter={activeStageFilter}
+                  onSelectStage={(stage) => setActiveStageFilter(stage)}
+                />
+
                 <input type="file" accept=".xlsx,.csv" ref={fileInputRef} style={{ display: 'none' }} onChange={handleFileChange} />
 
-                {/* ── STEP 4: LOADING SKELETON VS RICH TABLE / EMPTY STATE ── */}
+                {/* ── 3. DATA QUALITY SIGNAL BANNER ── */}
+                {(() => {
+                  const noNumCount = leads.filter(l => !l.phone || l.phone === '—' || l.number_type === 'No Number').length
+                  if (noNumCount > 0 && leads.length > 0) {
+                    return (
+                      <div style={{
+                        background: 'rgba(239, 68, 68, 0.08)',
+                        border: '1px solid rgba(239, 68, 68, 0.25)',
+                        borderRadius: '10px',
+                        padding: '10px 16px',
+                        marginBottom: '16px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justify: 'space-between',
+                        gap: '12px',
+                        fontSize: '12px',
+                        color: '#f87171'
+                      }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <span style={{ fontSize: '15px' }}>⚠️</span>
+                          <span>
+                            <strong>Data Quality Alert:</strong> {noNumCount} of {leads.length} leads have no phone number — add manually or re-import to enable calling.
+                          </span>
+                        </div>
+                        {role === 'admin' || role === 'manager' ? (
+                          <button
+                            onClick={() => fileInputRef?.current?.click()}
+                            style={{
+                              background: 'rgba(239, 68, 68, 0.15)',
+                              border: '1px solid rgba(239, 68, 68, 0.3)',
+                              color: '#f87171',
+                              borderRadius: '6px',
+                              padding: '4px 10px',
+                              fontSize: '11px',
+                              fontWeight: '600',
+                              cursor: 'pointer',
+                              whiteSpace: 'nowrap'
+                            }}
+                          >
+                            Re-import
+                          </button>
+                        ) : null}
+                      </div>
+                    )
+                  }
+                  return null
+                })()}
+
+                {/* ── 4. LEADS REFERENCE TABLE ── */}
                 {loading ? (
                   <SkeletonTable rows={6} />
                 ) : (

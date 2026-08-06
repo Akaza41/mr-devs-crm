@@ -63,6 +63,29 @@ function NumberBadge({ v }) {
 
 export default function LeadsTable({ role, leads, customColumns = [], onEdit, onDelete, onImportClick, onAddLead }) {
   const [copiedCell, setCopiedCell] = useState(null)
+  const [colMenuOpen, setColMenuOpen] = useState(false)
+
+  // Default visible columns as per Step 4 requirements
+  const [visibleCols, setVisibleCols] = useState({
+    hospital_name: true,
+    type: true,
+    rating: true,
+    phone: true,
+    priority: true,
+    stage: true,
+    // Hidden by default:
+    reviews: false,
+    number_type: false,
+    website: false,
+    fb: false,
+    contacted: false,
+    reply: false,
+    notes: false,
+  })
+
+  const toggleColumn = (key) => {
+    setVisibleCols(prev => ({ ...prev, [key]: !prev[key] }))
+  }
 
   const handleCopy = (text, id) => {
     if (isReadOnly(role) || !text || text === '—') return
@@ -99,7 +122,7 @@ export default function LeadsTable({ role, leads, customColumns = [], onEdit, on
           display: 'flex',
           flexDirection: 'column',
           alignItems: 'center',
-          justify: 'center',
+          justifyContent: 'center',
           gap: '16px'
         }}
       >
@@ -134,76 +157,196 @@ export default function LeadsTable({ role, leads, customColumns = [], onEdit, on
     )
   }
 
+  const optionalColsConfig = [
+    { key: 'reviews', label: 'Reviews' },
+    { key: 'number_type', label: 'Number Type' },
+    { key: 'website', label: 'Website' },
+    { key: 'fb', label: 'FB Found' },
+    { key: 'contacted', label: 'Contacted' },
+    { key: 'reply', label: 'Reply' },
+    { key: 'notes', label: 'Notes' },
+  ]
+
   return (
-    <div className="table-wrap">
-      <table>
-        <thead style={{ background: '#1a1a1a' }}>
-          <tr>
-            {['#', 'Hospital Name', 'Type', 'Rating', 'Reviews', 'Phone', 'Number', 'Website', 'Priority', 'Stage', 'FB', 'Contacted', 'Reply', 'Notes', ...customColumns.map(c => c.display_name), (canWriteLeads(role) || canDeleteLeads(role)) ? '' : null].filter(h => h !== null).map((h, i) => (
-              <th key={i} style={{ padding: '10px 16px', color: '#ededed', fontWeight: '500' }}>{h}</th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {leads.map((lead, i) => (
-            <tr key={i} className="group">
-              <td style={{ color: '#555' }}>{i + 1}</td>
-              <Cell id={`${i}-name`} textToCopy={lead.hospital_name}>
-                <div style={{ fontWeight: '500', maxWidth: '180px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={lead.hospital_name}>
-                  {lead.hospital_name}
-                </div>
-                {lead.address && (
-                  <div style={{ fontSize: '11px', color: '#555', maxWidth: '180px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={lead.address}>
-                    {lead.address}
-                  </div>
-                )}
-              </Cell>
-              <Cell id={`${i}-type`} textToCopy={lead.type} style={{ color: '#a0a0a0', whiteSpace: 'nowrap' }}>{lead.type || '—'}</Cell>
-              <Cell id={`${i}-rating`} textToCopy={lead.rating?.toString()}>
-                <span style={{ color: '#facc15' }}>★</span>
-                <span style={{ marginLeft: '4px' }}>{lead.rating || '—'}</span>
-              </Cell>
-              <Cell id={`${i}-reviews`} textToCopy={lead.reviews?.toString()} style={{ color: '#a0a0a0' }}>
-                {lead.reviews || '—'}
-              </Cell>
-              <Cell id={`${i}-phone`} textToCopy={lead.phone} style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: '12px', color: '#a0a0a0', whiteSpace: 'nowrap' }}>
-                {lead.phone || '—'}
-              </Cell>
-              <Cell id={`${i}-number`} textToCopy={lead.number_type}><NumberBadge v={lead.number_type} /></Cell>
-              <Cell id={`${i}-web`} textToCopy={lead.has_website}><YesNo v={lead.has_website} /></Cell>
-              <Cell id={`${i}-pri`} textToCopy={lead.priority}><PriorityBadge p={lead.priority} /></Cell>
-              <Cell id={`${i}-stage`} textToCopy={lead.stage || 'New'}><StageBadge v={lead.stage} /></Cell>
-              <Cell id={`${i}-fb`} textToCopy={lead.fb_found}><FbBadge v={lead.fb_found} /></Cell>
-              <Cell id={`${i}-cont`} textToCopy={lead.contacted}><ContactedBadge v={lead.contacted} /></Cell>
-              <Cell id={`${i}-rep`} textToCopy={lead.reply}><ReplyBadge v={lead.reply} /></Cell>
-              <Cell id={`${i}-notes`} textToCopy={lead.notes} style={{ maxWidth: '160px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: '#555', fontSize: '12px' }} title={lead.notes}>
-                {lead.notes || '—'}
-              </Cell>
-              {customColumns.map(c => (
-                <Cell id={`${i}-${c.column_name}`} key={c.id} textToCopy={lead[c.column_name]}>
-                  {c.data_type === 'Yes/No' ? (
-                    <YesNo v={lead[c.column_name]} />
-                  ) : (
-                    <span style={{ color: '#ededed', fontSize: '13px', whiteSpace: 'nowrap' }}>{lead[c.column_name] || '—'}</span>
-                  )}
-                </Cell>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+      
+      {/* Table Toolbar / Column Toggle */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0 4px' }}>
+        <div style={{ fontSize: '12px', color: '#8a8a85', fontWeight: '500' }}>
+          Showing <strong style={{ color: '#f5f5f0' }}>{leads.length}</strong> leads
+        </div>
+
+        <div style={{ position: 'relative' }}>
+          <button
+            type="button"
+            onClick={() => setColMenuOpen(!colMenuOpen)}
+            className="btn-ghost"
+            style={{ padding: '4px 10px', fontSize: '11px', gap: '6px', color: '#8a8a85' }}
+          >
+            👁️ Toggle Columns
+          </button>
+
+          {colMenuOpen && (
+            <div
+              style={{
+                position: 'absolute',
+                top: 'calc(100% + 4px)',
+                right: 0,
+                width: '180px',
+                background: '#1c1c20',
+                border: '1px solid rgba(255, 255, 255, 0.12)',
+                borderRadius: '10px',
+                padding: '10px',
+                boxShadow: '0 10px 30px rgba(0,0,0,0.5)',
+                zIndex: 100,
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '8px'
+              }}
+            >
+              <div style={{ fontSize: '11px', fontWeight: '700', color: '#8a8a85', textTransform: 'uppercase' }}>Optional Columns</div>
+              {optionalColsConfig.map(col => (
+                <label key={col.key} style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '12px', color: '#ededed', cursor: 'pointer' }}>
+                  <input
+                    type="checkbox"
+                    checked={visibleCols[col.key]}
+                    onChange={() => toggleColumn(col.key)}
+                    style={{ accentColor: '#3ecf8e' }}
+                  />
+                  <span>{col.label}</span>
+                </label>
               ))}
-              {(canWriteLeads(role) || canDeleteLeads(role)) && (
-                <td>
-                  <div style={{ display: 'flex', gap: '12px', opacity: '0' }} className="actions">
-                    {canWriteLeads(role) && (
-                      <button onClick={() => onEdit(lead)} style={{ background: 'none', border: 'none', color: '#a0a0a0', cursor: 'pointer', fontSize: '12px', padding: '0' }}>Edit</button>
-                    )}
-                    {canDeleteLeads(role) && (
-                      <button onClick={() => onDelete(lead)} style={{ background: 'none', border: 'none', color: '#f87171', cursor: 'pointer', fontSize: '12px', padding: '0' }}>Delete</button>
-                    )}
-                  </div>
-                </td>
-              )}
+            </div>
+          )}
+        </div>
+      </div>
+
+      <div className="table-wrap">
+        <table>
+          <thead style={{ background: '#1a1a1a' }}>
+            <tr>
+              <th style={{ padding: '10px 16px', color: '#ededed', fontWeight: '500' }}>#</th>
+              {visibleCols.hospital_name && <th style={{ padding: '10px 16px', color: '#ededed', fontWeight: '500' }}>Hospital Name</th>}
+              {visibleCols.type && <th style={{ padding: '10px 16px', color: '#ededed', fontWeight: '500' }}>Type</th>}
+              {visibleCols.rating && <th style={{ padding: '10px 16px', color: '#ededed', fontWeight: '500' }}>Rating</th>}
+              {visibleCols.reviews && <th style={{ padding: '10px 16px', color: '#ededed', fontWeight: '500' }}>Reviews</th>}
+              {visibleCols.phone && <th style={{ padding: '10px 16px', color: '#ededed', fontWeight: '500' }}>Phone</th>}
+              {visibleCols.number_type && <th style={{ padding: '10px 16px', color: '#ededed', fontWeight: '500' }}>Number</th>}
+              {visibleCols.website && <th style={{ padding: '10px 16px', color: '#ededed', fontWeight: '500' }}>Website</th>}
+              {visibleCols.priority && <th style={{ padding: '10px 16px', color: '#ededed', fontWeight: '500' }}>Priority</th>}
+              {visibleCols.stage && <th style={{ padding: '10px 16px', color: '#ededed', fontWeight: '500' }}>Stage</th>}
+              {visibleCols.fb && <th style={{ padding: '10px 16px', color: '#ededed', fontWeight: '500' }}>FB</th>}
+              {visibleCols.contacted && <th style={{ padding: '10px 16px', color: '#ededed', fontWeight: '500' }}>Contacted</th>}
+              {visibleCols.reply && <th style={{ padding: '10px 16px', color: '#ededed', fontWeight: '500' }}>Reply</th>}
+              {visibleCols.notes && <th style={{ padding: '10px 16px', color: '#ededed', fontWeight: '500' }}>Notes</th>}
+              {customColumns.map(c => (
+                <th key={c.id} style={{ padding: '10px 16px', color: '#ededed', fontWeight: '500' }}>{c.display_name}</th>
+              ))}
+              {(canWriteLeads(role) || canDeleteLeads(role)) && <th style={{ padding: '10px 16px' }} />}
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {leads.map((lead, i) => (
+              <tr key={lead.id || i} className="group">
+                <td style={{ color: '#555' }}>{i + 1}</td>
+                
+                {visibleCols.hospital_name && (
+                  <Cell id={`${i}-name`} textToCopy={lead.hospital_name}>
+                    <div style={{ fontWeight: '500', maxWidth: '180px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={lead.hospital_name}>
+                      {lead.hospital_name}
+                    </div>
+                    {lead.address && (
+                      <div style={{ fontSize: '11px', color: '#555', maxWidth: '180px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={lead.address}>
+                        {lead.address}
+                      </div>
+                    )}
+                  </Cell>
+                )}
+
+                {visibleCols.type && (
+                  <Cell id={`${i}-type`} textToCopy={lead.type} style={{ color: '#a0a0a0', whiteSpace: 'nowrap' }}>{lead.type || '—'}</Cell>
+                )}
+
+                {visibleCols.rating && (
+                  <Cell id={`${i}-rating`} textToCopy={lead.rating?.toString()}>
+                    <span style={{ color: '#facc15' }}>★</span>
+                    <span style={{ marginLeft: '4px' }}>{lead.rating || '—'}</span>
+                  </Cell>
+                )}
+
+                {visibleCols.reviews && (
+                  <Cell id={`${i}-reviews`} textToCopy={lead.reviews?.toString()} style={{ color: '#a0a0a0' }}>
+                    {lead.reviews || '—'}
+                  </Cell>
+                )}
+
+                {visibleCols.phone && (
+                  <Cell id={`${i}-phone`} textToCopy={lead.phone} style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: '12px', color: '#a0a0a0', whiteSpace: 'nowrap' }}>
+                    {lead.phone || '—'}
+                  </Cell>
+                )}
+
+                {visibleCols.number_type && (
+                  <Cell id={`${i}-number`} textToCopy={lead.number_type}><NumberBadge v={lead.number_type} /></Cell>
+                )}
+
+                {visibleCols.website && (
+                  <Cell id={`${i}-web`} textToCopy={lead.has_website}><YesNo v={lead.has_website} /></Cell>
+                )}
+
+                {visibleCols.priority && (
+                  <Cell id={`${i}-pri`} textToCopy={lead.priority}><PriorityBadge p={lead.priority} /></Cell>
+                )}
+
+                {visibleCols.stage && (
+                  <Cell id={`${i}-stage`} textToCopy={lead.stage || 'New'}><StageBadge v={lead.stage} /></Cell>
+                )}
+
+                {visibleCols.fb && (
+                  <Cell id={`${i}-fb`} textToCopy={lead.fb_found}><FbBadge v={lead.fb_found} /></Cell>
+                )}
+
+                {visibleCols.contacted && (
+                  <Cell id={`${i}-cont`} textToCopy={lead.contacted}><ContactedBadge v={lead.contacted} /></Cell>
+                )}
+
+                {visibleCols.reply && (
+                  <Cell id={`${i}-rep`} textToCopy={lead.reply}><ReplyBadge v={lead.reply} /></Cell>
+                )}
+
+                {visibleCols.notes && (
+                  <Cell id={`${i}-notes`} textToCopy={lead.notes} style={{ maxWidth: '160px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: '#555', fontSize: '12px' }} title={lead.notes}>
+                    {lead.notes || '—'}
+                  </Cell>
+                )}
+
+                {customColumns.map(c => (
+                  <Cell id={`${i}-${c.column_name}`} key={c.id} textToCopy={lead[c.column_name]}>
+                    {c.data_type === 'Yes/No' ? (
+                      <YesNo v={lead[c.column_name]} />
+                    ) : (
+                      <span style={{ color: '#ededed', fontSize: '13px', whiteSpace: 'nowrap' }}>{lead[c.column_name] || '—'}</span>
+                    )}
+                  </Cell>
+                ))}
+
+                {(canWriteLeads(role) || canDeleteLeads(role)) && (
+                  <td>
+                    <div style={{ display: 'flex', gap: '12px', opacity: '0' }} className="actions">
+                      {canWriteLeads(role) && (
+                        <button onClick={() => onEdit(lead)} style={{ background: 'none', border: 'none', color: '#a0a0a0', cursor: 'pointer', fontSize: '12px', padding: '0' }}>Edit</button>
+                      )}
+                      {canDeleteLeads(role) && (
+                        <button onClick={() => onDelete(lead)} style={{ background: 'none', border: 'none', color: '#f87171', cursor: 'pointer', fontSize: '12px', padding: '0' }}>Delete</button>
+                      )}
+                    </div>
+                  </td>
+                )}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </div>
   )
 }

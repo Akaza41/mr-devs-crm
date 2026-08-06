@@ -24,7 +24,7 @@ const TEAM_ACCESS_ROLES = ['admin', 'manager']
 const MANAGE_COLUMN_ROLES = ['admin', 'manager']
 
 // Roles with import permission
-const IMPORT_ROLES = ['admin', 'manager', 'sales', 'lead generator']
+const IMPORT_ROLES = ['admin', 'manager']
 
 // Roles that can manage user invites (Add User / Pending Invites screen)
 const INVITE_ROLES = ['admin']
