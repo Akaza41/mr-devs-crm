@@ -9,32 +9,17 @@ export default function SettingsPage({ userProfile, onBack }) {
   const [cadenceLoading, setCadenceLoading] = useState(false)
   const [toast, setToast] = useState('')
   const [password, setPassword] = useState('')
-  const [fullName, setFullName] = useState('')
-  const [title, setTitle] = useState('')
-  const [phone, setPhone] = useState('')
-  const [bio, setBio] = useState('')
-  const [specialtiesInput, setSpecialtiesInput] = useState('')
-  const [avatarUrl, setAvatarUrl] = useState('')
+  const [fullName, setFullName] = useState(userProfile?.full_name || '')
+  const [title, setTitle] = useState(userProfile?.title || '')
+  const [phone, setPhone] = useState(userProfile?.phone || '')
+  const [bio, setBio] = useState(userProfile?.bio || '')
+  const [specialtiesInput, setSpecialtiesInput] = useState(Array.isArray(userProfile?.specialties) ? userProfile.specialties.join(', ') : '')
+  const [avatarUrl, setAvatarUrl] = useState(userProfile?.avatar_url || '')
 
   // Cadence Settings State
   const [noAnswerDays, setNoAnswerDays] = useState(2)
   const [voicemailDays, setVoicemailDays] = useState(2)
   const [answeredDays, setAnsweredDays] = useState(4)
-
-  useEffect(() => {
-    if (userProfile) {
-      setFullName(userProfile.full_name || '')
-      setTitle(userProfile.title || '')
-      setPhone(userProfile.phone || '')
-      setBio(userProfile.bio || '')
-      setSpecialtiesInput(Array.isArray(userProfile.specialties) ? userProfile.specialties.join(', ') : '')
-      setAvatarUrl(userProfile.avatar_url || '')
-    }
-  }, [userProfile])
-
-  useEffect(() => {
-    fetchCadenceSettings()
-  }, [])
 
   const fetchCadenceSettings = async () => {
     try {
@@ -53,6 +38,10 @@ export default function SettingsPage({ userProfile, onBack }) {
       console.warn('Cadence settings fetch error:', err)
     }
   }
+
+  useEffect(() => {
+    fetchCadenceSettings()
+  }, [])
 
   const showToast = (msg) => {
     setToast(msg)

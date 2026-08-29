@@ -24,7 +24,10 @@ const TEAM_ACCESS_ROLES = ['admin', 'manager']
 const MANAGE_COLUMN_ROLES = ['admin', 'manager']
 
 // Roles with import permission
-const IMPORT_ROLES = ['admin', 'manager']
+const IMPORT_ROLES = ['admin', 'manager', 'lead generator']
+
+// Roles that can assign leads to reps
+const ASSIGN_LEAD_ROLES = ['admin', 'manager']
 
 // Roles that can manage user invites (Add User / Pending Invites screen)
 const INVITE_ROLES = ['admin']
@@ -91,6 +94,14 @@ export function canImport(role) {
  */
 export function canManageInvites(role) {
   return INVITE_ROLES.includes(role)
+}
+
+/**
+ * Returns true if the role can assign leads to reps.
+ * @param {string} role
+ */
+export function canAssignLeads(role) {
+  return ASSIGN_LEAD_ROLES.includes(role)
 }
 
 /**

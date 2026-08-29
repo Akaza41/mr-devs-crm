@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { supabase } from '../lib/supabase'
 
 function getAvatarInitial(fullName, email) {
@@ -14,12 +14,7 @@ export default function LeaderboardPage({ onlineUserIds = new Set(), onBack }) {
   const [sortBy, setSortBy] = useState('conversion_rate') // 'conversion_rate' | 'avg_research_score' | 'leads_contacted'
   const [loading, setLoading] = useState(true)
 
-  useEffect(() => {
-    fetchLeaderboard()
-  }, [])
-
   const fetchLeaderboard = async () => {
-    setLoading(true)
     const { data, error } = await supabase.rpc('get_team_metrics')
 
     if (!error && data) {
@@ -50,13 +45,17 @@ export default function LeaderboardPage({ onlineUserIds = new Set(), onBack }) {
     setLoading(false)
   }
 
+  useEffect(() => {
+    fetchLeaderboard()
+  }, [])
+
   // Determine if there is any real sales activity logged
   const hasRealActivity = leaderboard.some(
     r => Number(r.leads_contacted || 0) > 0 || Number(r.leads_converted || 0) > 0 || Number(r.total_actions || 0) > 0
   )
 
   // Sort leaderboard dynamically
-  const sortedLeaderboard = React.useMemo(() => {
+  const sortedLeaderboard = useMemo(() => {
     if (!hasRealActivity) return []
     return [...leaderboard].sort((a, b) => {
       if (sortBy === 'conversion_rate') {
@@ -70,7 +69,7 @@ export default function LeaderboardPage({ onlineUserIds = new Set(), onBack }) {
   }, [leaderboard, sortBy, hasRealActivity])
 
   // Compute overall team totals
-  const teamTotals = React.useMemo(() => {
+  const teamTotals = useMemo(() => {
     const totalContacted = leaderboard.reduce((sum, r) => sum + Number(r.leads_contacted || 0), 0)
     const totalConverted = leaderboard.reduce((sum, r) => sum + Number(r.leads_converted || 0), 0)
     const avgRate = totalContacted > 0 ? ((totalConverted / totalContacted) * 100).toFixed(1) : '0.0'

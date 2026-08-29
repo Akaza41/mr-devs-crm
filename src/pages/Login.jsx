@@ -1,26 +1,21 @@
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { supabase } from '../lib/supabase'
 
 export default function Login() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
-  const [error, setError] = useState('')
-  const [loading, setLoading] = useState(false)
-  const [googleLoading, setGoogleLoading] = useState(false)
-
-  // ── HANDLE OAUTH REDIRECT ERRORS FROM URL ──
-  useEffect(() => {
-    // If Supabase OAuth redirects back with an error in hash or search query params
+  const [error, setError] = useState(() => {
     const hashParams = new URLSearchParams(window.location.hash.substring(1))
     const queryParams = new URLSearchParams(window.location.search)
     const errorDesc = hashParams.get('error_description') || queryParams.get('error_description')
     const errorMsg = hashParams.get('error') || queryParams.get('error')
-
     if (errorDesc || errorMsg) {
-      const parsed = errorDesc || errorMsg
-      setError(decodeURIComponent(parsed).replace(/\+/g, ' '))
+      return decodeURIComponent(errorDesc || errorMsg).replace(/\+/g, ' ')
     }
-  }, [])
+    return ''
+  })
+  const [loading, setLoading] = useState(false)
+  const [googleLoading, setGoogleLoading] = useState(false)
 
   // ── SUPABASE LOGIN LOGIC ──
   // Authenticates via Supabase. Success is handled automatically by App.jsx's listener.

@@ -16,7 +16,6 @@ export default function EmployeeProfilePage({ userId, onBack }) {
 
   const fetchMemberData = useCallback(async () => {
     if (!userId) return
-    setLoading(true)
     const { data, error } = await supabase
       .from('profiles')
       .select('id, email, role, full_name, avatar_url, created_at')

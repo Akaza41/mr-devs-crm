@@ -2,6 +2,8 @@ import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import EmployeeCard from './team/EmployeeCard'
 import AddMemberModal from './team/AddMemberModal'
+import { logActivity } from '../lib/activityLogger'
+import { ACTIONS } from '../lib/activityActions'
 
 export default function TeamPage({ onViewProfile, onlineUserIds = new Set() }) {
   const [team, setTeam] = useState([])

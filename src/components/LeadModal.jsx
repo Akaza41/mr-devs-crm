@@ -2,16 +2,18 @@ import { useState, useEffect, useRef } from 'react'
 import { supabase } from '../lib/supabase'
 
 const FIELDS = [
-  { key: 'hospital_name', label: 'Hospital Name', type: 'text', full: true },
-  { key: 'type', label: 'Type', type: 'text' },
-  { key: 'rating', label: 'Rating', type: 'number' },
-  { key: 'reviews', label: 'Reviews', type: 'number' },
+  { key: 'hospital_name', label: 'Lead / Business Name', type: 'text', full: true },
+  { key: 'type', label: 'Industry / Type', type: 'text' },
+  { key: 'decision_maker', label: 'Decision Maker', type: 'text' },
   { key: 'phone', label: 'Phone', type: 'text' },
   { key: 'number_type', label: 'Number Type', type: 'select', options: ['Mobile ✅', 'Landline ⚠️', 'No Number'] },
   { key: 'address', label: 'Address', type: 'text', full: true },
-  { key: 'has_website', label: 'Has Website', type: 'select', options: ['No', 'Yes'] },
+  { key: 'pain_point', label: 'Pain Point / Challenge', type: 'textarea', full: true },
+  { key: 'current_solution', label: 'Current Solution / Tool', type: 'textarea', full: true },
   { key: 'priority', label: 'Priority', type: 'select', options: ['High', 'Medium', 'Low'] },
   { key: 'stage', label: 'Stage', type: 'select', options: ['New', 'Contacted', 'Interested', 'Converted', 'Lost'] },
+  { key: 'next_followup_due', label: 'Next Follow-Up Due', type: 'datetime-local' },
+  { key: 'has_website', label: 'Has Website', type: 'select', options: ['No', 'Yes'] },
   { key: 'fb_found', label: 'FB Found', type: 'select', options: ['No', 'Yes'] },
   { key: 'contacted', label: 'Contacted', type: 'select', options: ['No', 'Queued', 'Attempted', 'Yes', 'Not Reachable'] },
   { key: 'reply', label: 'Reply', type: 'select', options: ['', 'Yes', 'No', 'Later'] },
@@ -25,11 +27,16 @@ const RESEARCH_PROMPTS = [
   { key: 'opportunity', label: 'Pitch Opportunity & Strategy', placeholder: "What is the pitch, entry point, angle, or high-value offer for them?" },
 ]
 
-export default function LeadModal({ lead, customColumns = [], onClose, onSave }) {
+export default function LeadModal({ lead, customColumns = [], teamMembers = [], onClose, onSave }) {
   const [activeTab, setActiveTab] = useState('details')
   const [form, setForm] = useState({})
   const [researchNotes, setResearchNotes] = useState({ weaknesses: '', strengths: '', competitors: '', opportunity: '' })
   const [showSoftWarning, setShowSoftWarning] = useState(false)
+  
+  // AI Outreach Message State
+  const [aiLoading, setAiLoading] = useState(false)
+  const [aiMessage, setAiMessage] = useState('')
+  const [aiCopied, setAiCopied] = useState(false)
   
   // Discussion Thread State
   const [channel, setChannel] = useState(null)
@@ -203,9 +210,51 @@ export default function LeadModal({ lead, customColumns = [], onClose, onSave })
     }
   }
 
+  const handleGenerateAiMessage = async () => {
+    setAiLoading(true)
+    setAiCopied(false)
+    try {
+      const { data, error } = await supabase.functions.invoke('generate_outreach_message', {
+        body: {
+          lead_name: form.hospital_name || form.lead_name,
+          type: form.type,
+          pain_point: form.pain_point,
+          current_solution: form.current_solution,
+          decision_maker: form.decision_maker,
+          notes: form.notes
+        }
+      })
+
+      if (error || !data?.message) {
+        const dm = form.decision_maker ? `Hi ${form.decision_maker}, ` : 'Hi there, '
+        const q = form.pain_point 
+          ? `Are you currently experiencing bottlenecks with ${form.pain_point.toLowerCase()} at ${form.hospital_name || 'your team'}?`
+          : `How is your team managing operational efficiency at ${form.hospital_name || 'your company'}?`
+        setAiMessage(`${dm}${q} We help ${form.type || 'growing teams'} solve this. Open for a 5-minute chat?`)
+      } else {
+        setAiMessage(data.message)
+      }
+    } catch (err) {
+      console.warn('AI generation fallback:', err)
+      const dm = form.decision_maker ? `Hi ${form.decision_maker}, ` : 'Hi there, '
+      setAiMessage(`${dm}Are you currently looking for ways to streamline operations at ${form.hospital_name || 'your team'}? Open to a 5-min diagnostic chat?`)
+    } finally {
+      setAiLoading(false)
+    }
+  }
+
+  const handleCopyAiMessage = () => {
+    if (!aiMessage) return
+    navigator.clipboard.writeText(aiMessage)
+    setAiCopied(true)
+    setTimeout(() => setAiCopied(false), 2000)
+  }
+
   const executeSave = () => {
     const finalData = {
       ...form,
+      hospital_name: form.hospital_name || form.lead_name || 'Unnamed Lead',
+      lead_name: form.hospital_name || form.lead_name || 'Unnamed Lead',
       research_notes: researchNotes,
       research_score: currentScore
     }
@@ -213,7 +262,7 @@ export default function LeadModal({ lead, customColumns = [], onClose, onSave })
   }
 
   const handleSave = () => {
-    if (!form.hospital_name) { alert('Hospital name is required'); return }
+    if (!form.hospital_name && !form.lead_name) { alert('Lead / Business name is required'); return }
 
     // Check Stage-Change Soft Warning Guardrail
     const isOutreachStage = ['Contacted', 'Interested', 'Converted'].includes(form.stage)
@@ -227,16 +276,18 @@ export default function LeadModal({ lead, customColumns = [], onClose, onSave })
     executeSave()
   }
 
+  const cleanPhone = (form.phone || '').replace(/[^0-9+]/g, '')
+
   return (
     <div className="modal-overlay">
-      <div className="modal" style={{ width: '720px', maxWidth: '95vw', background: '#161616', border: '0.5px solid #232323' }}>
+      <div className="modal" style={{ width: '760px', maxWidth: '95vw', background: '#161616', border: '0.5px solid #232323' }}>
         
         {/* Modal Header & Navigation Tabs */}
         <div className="modal-header" style={{ flexDirection: 'column', alignItems: 'stretch', gap: '12px', paddingBottom: '0', borderBottom: '0.5px solid #232323' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
               <span className="font-headline" style={{ fontSize: '16px', fontWeight: '700', color: '#f5f5f0' }}>
-                {lead ? (form.hospital_name || 'Edit Lead') : 'Add New Lead'}
+                {lead ? (form.hospital_name || form.lead_name || 'Edit Lead') : 'Add New Lead'}
               </span>
               
               {/* Research Score Badge */}
@@ -274,7 +325,7 @@ export default function LeadModal({ lead, customColumns = [], onClose, onSave })
                 borderBottom: activeTab === 'details' ? '2px solid #3ecf8e' : '2px solid transparent'
               }}
             >
-              Basic Info
+              Basic Info & Context
             </button>
 
             <button
@@ -328,7 +379,84 @@ export default function LeadModal({ lead, customColumns = [], onClose, onSave })
         {/* Modal Body */}
         {activeTab === 'details' ? (
           <>
-            <div className="modal-body">
+            <div className="modal-body" style={{ gap: '16px' }}>
+              
+              {/* Quick Contact Actions Bar */}
+              {cleanPhone && (
+                <div style={{ gridColumn: 'span 2', background: '#121212', border: '0.5px solid #282828', borderRadius: '8px', padding: '10px 14px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px' }}>
+                  <div style={{ fontSize: '12px', color: '#a0a0a0', fontWeight: '500' }}>
+                    🚀 Quick Actions for <strong style={{ color: '#ededed' }}>{cleanPhone}</strong>
+                  </div>
+                  <div style={{ display: 'flex', gap: '8px' }}>
+                    <a href={`tel:${cleanPhone}`} className="btn-ghost" style={{ textDecoration: 'none', fontSize: '11px', padding: '4px 10px', color: '#60a5fa' }}>
+                      📞 Call
+                    </a>
+                    <a href={`https://wa.me/${cleanPhone}`} target="_blank" rel="noopener noreferrer" className="btn-ghost" style={{ textDecoration: 'none', fontSize: '11px', padding: '4px 10px', color: '#3ecf8e' }}>
+                      💬 WhatsApp
+                    </a>
+                    {form.has_website === 'Yes' && (
+                      <a href={form.address?.startsWith('http') ? form.address : `https://${form.address}`} target="_blank" rel="noopener noreferrer" className="btn-ghost" style={{ textDecoration: 'none', fontSize: '11px', padding: '4px 10px', color: '#facc15' }}>
+                        🌐 Website
+                      </a>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* AI Outreach Generator Box */}
+              <div style={{ gridColumn: 'span 2', background: 'rgba(62,207,142,0.05)', border: '0.5px solid rgba(62,207,142,0.2)', borderRadius: '8px', padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div style={{ fontSize: '12px', fontWeight: '600', color: '#3ecf8e', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    ✨ AI Outreach Message Generator (Server-Side)
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleGenerateAiMessage}
+                    disabled={aiLoading}
+                    className="btn-primary"
+                    style={{ fontSize: '11px', padding: '4px 10px' }}
+                  >
+                    {aiLoading ? 'Generating...' : '✨ Generate Personalized Message'}
+                  </button>
+                </div>
+
+                {aiMessage && (
+                  <div style={{ background: '#0e0e0e', border: '0.5px solid #2a2a2a', borderRadius: '6px', padding: '10px 12px', fontSize: '12px', color: '#ededed', lineHeight: '1.5', position: 'relative' }}>
+                    {aiMessage}
+                    <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '8px' }}>
+                      <button
+                        type="button"
+                        onClick={handleCopyAiMessage}
+                        className="btn-ghost"
+                        style={{ fontSize: '10px', padding: '2px 8px', color: aiCopied ? '#3ecf8e' : '#a0a0a0' }}
+                      >
+                        {aiCopied ? '✓ Copied to Clipboard!' : '📋 Copy Message'}
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Rep Assignment Dropdown */}
+              <div className="form-group col-span-2" style={{ background: '#121212', border: '0.5px solid #232323', padding: '10px 14px', borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <label style={{ color: '#ededed', fontSize: '12px', fontWeight: '500', margin: 0 }}>
+                  👤 Assigned Sales Specialist
+                </label>
+                <select
+                  className="input-base"
+                  style={{ width: '220px', fontSize: '12px', padding: '4px 8px' }}
+                  value={form.assigned_to || ''}
+                  onChange={e => setForm(p => ({ ...p, assigned_to: e.target.value || null }))}
+                >
+                  <option value="">-- Unassigned --</option>
+                  {teamMembers.map(m => (
+                    <option key={m.id} value={m.id}>
+                      {m.full_name || m.email} ({m.role})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
               {allFields.map(f => (
                 <div key={f.key} className={`form-group ${f.full ? 'col-span-2' : ''}`}>
                   <label style={{ color: '#8a8a85', fontSize: '11px' }}>{f.label}</label>

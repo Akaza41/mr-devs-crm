@@ -9,12 +9,7 @@ export default function ExtensionActivityPage({ onBack }) {
   const [filterRep, setFilterRep] = useState('ALL')
   const [filterTimeframe, setFilterTimeframe] = useState('TODAY')
 
-  useEffect(() => {
-    fetchAccountabilityData()
-  }, [])
-
   const fetchAccountabilityData = async () => {
-    setLoading(true)
     try {
       // 1. Fetch team profiles
       const { data: profs } = await supabase
@@ -43,6 +38,10 @@ export default function ExtensionActivityPage({ onBack }) {
       setLoading(false)
     }
   }
+
+  useEffect(() => {
+    fetchAccountabilityData()
+  }, [])
 
   // Filter events and touches based on timeframe
   const { filteredEvents, filteredTouches } = useMemo(() => {

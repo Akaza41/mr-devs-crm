@@ -5,7 +5,7 @@ import { supabase } from '../lib/supabase'
 import { logActivity } from '../lib/activityLogger'
 import { ACTIONS } from '../lib/activityActions'
 
-export default function ImportModal({ file, activeProject, customColumns = [], onRefreshCustomColumns, onClose, onSuccess }) {
+export default function ImportModal({ file, activeProject, customColumns = [], currentUserProfile, onRefreshCustomColumns, onClose, onSuccess }) {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [step, setStep] = useState(1)
@@ -20,7 +20,12 @@ export default function ImportModal({ file, activeProject, customColumns = [], o
   const [selectedRows, setSelectedRows] = useState(new Set())
   const [selectedCols, setSelectedCols] = useState(new Set())
 
-  const dbCols = ['hospital_name', 'address', 'type', 'rating', 'reviews', 'phone', 'number_type', 'has_website', 'priority', 'stage', 'fb_found', 'contacted', 'reply', 'notes', ...customColumns.map(c => c.column_name)]
+  const dbCols = [
+    'hospital_name', 'lead_name', 'address', 'type', 'rating', 'reviews', 'phone', 
+    'number_type', 'has_website', 'priority', 'stage', 'fb_found', 'contacted', 
+    'reply', 'notes', 'pain_point', 'current_solution', 'decision_maker', 'next_followup_due',
+    ...customColumns.map(c => c.column_name)
+  ]
 
   // Column names that should NEVER be mapped — these are row IDs / serial numbers from Excel
   const blocklist = ['id', 'no', 'sr', 'sr_no', 'sno', 's_no', 'serial', 'serial_no', 'row', 'row_no', 'index', 'sl', 'sl_no', 'project_id', '#']
@@ -45,6 +50,7 @@ export default function ImportModal({ file, activeProject, customColumns = [], o
       'company': 'hospital_name',
       'company_name': 'hospital_name',
       'place_name': 'hospital_name',
+      'client_name': 'hospital_name',
       'website': 'has_website',
       'has_web': 'has_website',
       'web': 'has_website',
@@ -69,6 +75,24 @@ export default function ImportModal({ file, activeProject, customColumns = [], o
       'google_rating': 'rating',
       'addr': 'address',
       'location': 'address',
+      'pain': 'pain_point',
+      'pain_point': 'pain_point',
+      'problem': 'pain_point',
+      'challenge': 'pain_point',
+      'solution': 'current_solution',
+      'current_solution': 'current_solution',
+      'existing_solution': 'current_solution',
+      'current_tool': 'current_solution',
+      'decision_maker': 'decision_maker',
+      'contact_person': 'decision_maker',
+      'owner': 'decision_maker',
+      'ceo': 'decision_maker',
+      'manager_name': 'decision_maker',
+      'followup_date': 'next_followup_due',
+      'follow_up_date': 'next_followup_due',
+      'next_followup': 'next_followup_due',
+      'next_followup_due': 'next_followup_due',
+      'due_date': 'next_followup_due',
     }
 
     if (aliases[norm]) return aliases[norm]
@@ -160,7 +184,7 @@ export default function ImportModal({ file, activeProject, customColumns = [], o
     if (!colName || !colName.trim()) return
 
     const key = colName.toLowerCase().replace(/[^a-z0-9]/g, '_')
-    const allDbCols = ['hospital_name', 'address', 'type', 'rating', 'reviews', 'phone', 'number_type', 'has_website', 'priority', 'stage', 'fb_found', 'contacted', 'reply', 'notes', ...customColumns.map(c => c.column_name)]
+    const allDbCols = dbCols
     if (allDbCols.includes(key)) {
       alert('A column with this name already exists.')
       return
@@ -233,10 +257,11 @@ export default function ImportModal({ file, activeProject, customColumns = [], o
       return
     }
 
-    // SAFE LIST of allowed DB columns — only these can ever be inserted
+    // SAFE LIST of allowed DB columns — only these can ever be inserted directly
     const allowedColumns = new Set([
-      'hospital_name', 'address', 'type', 'rating', 'reviews', 'phone', 'number_type',
+      'hospital_name', 'lead_name', 'address', 'type', 'rating', 'reviews', 'phone', 'number_type',
       'has_website', 'priority', 'stage', 'fb_found', 'contacted', 'reply', 'notes',
+      'pain_point', 'current_solution', 'decision_maker', 'next_followup_due', 'created_by', 'assigned_to',
       'project_id',
       ...customColumns.map(c => c.column_name)
     ])
@@ -287,6 +312,18 @@ export default function ImportModal({ file, activeProject, customColumns = [], o
 
       // Always set project_id from activeProject — never from Excel
       newRow.project_id = activeProject.id
+
+      // Set creator ID if available
+      if (currentUserProfile?.id) {
+        newRow.created_by = currentUserProfile.id
+      }
+
+      // Sync lead_name and hospital_name
+      if (newRow.hospital_name && !newRow.lead_name) {
+        newRow.lead_name = newRow.hospital_name
+      } else if (newRow.lead_name && !newRow.hospital_name) {
+        newRow.hospital_name = newRow.lead_name
+      }
 
       // Final safety — delete id no matter what
       delete newRow.id

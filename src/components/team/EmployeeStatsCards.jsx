@@ -1,5 +1,3 @@
-import React from 'react'
-
 // ── EMPLOYEE STATS CARDS ──
 // Renders professional SaaS dashboard metrics for the employee
 // using real data aggregated from the activity_logs table.
@@ -20,7 +18,7 @@ export default function EmployeeStatsCards({ member }) {
     { label: 'Leads Created', value: leadsAdded, subtext: 'Total leads sourced' },
     { label: 'Leads Updated', value: leadsEdited, subtext: 'Total leads modified' },
     { label: 'Projects Worked On', value: projectsWorkedOn, subtext: 'Distinct projects' },
-    { label: 'Total Activity', value: totalActions, subtext: 'All CRM actions' }
+    { label: 'Total Activity', value: totalActions, subtext: `Last active: ${statusText}` }
   ]
 
   return (

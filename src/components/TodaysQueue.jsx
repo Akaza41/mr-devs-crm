@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react'
 import { supabase } from '../lib/supabase'
 import { logActivity } from '../lib/activityLogger'
 import LogTouchModal from './LogTouchModal'
+import { getLeadDisplayName } from '../lib/leadUtils'
 
 const CHANNEL_ICONS = {
   call: '📞 Call',
@@ -244,7 +245,7 @@ export default function TodaysQueue({ leads = [], currentUserProfile, activeProj
             <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', minWidth: '220px' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                 <span style={{ fontWeight: '600', fontSize: '13px', color: '#f5f5f0' }}>
-                  {lead.hospital_name || lead.lead_name || 'Unnamed Lead'}
+                  {getLeadDisplayName(lead)}
                 </span>
                 
                 {/* Sequence badge */}

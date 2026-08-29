@@ -11,14 +11,13 @@ import ColManager from '../components/ColManager'
 import ImportModal from '../components/ImportModal'
 import ProjectModal from '../components/ProjectModal'
 import TeamPage from '../components/TeamPage'
-import AddUserScreen from '../components/team/AddUserScreen'
 import GlobalChatPage from '../components/chat/GlobalChatPage'
 import EmployeeProfilePage from './EmployeeProfilePage'
 import SettingsPage from './SettingsPage'
 import LeaderboardPage from './LeaderboardPage'
 import UsersPage from './UsersPage'
 import ExtensionActivityPage from './ExtensionActivityPage'
-import { canManageProjects, canManageInvites } from '../lib/permissions'
+import { canManageInvites } from '../lib/permissions'
 import { useRouting } from '../lib/useRouting'
 import { logActivity } from '../lib/activityLogger'
 import { ACTIONS } from '../lib/activityActions'
@@ -45,6 +44,7 @@ export default function Dashboard({ userProfile, role, onLogout }) {
   const [editingLead, setEditingLead] = useState(null)
   const [toast, setToast] = useState('')
   const [onlineUserIds, setOnlineUserIds] = useState([])
+  const [teamMembers, setTeamMembers] = useState([])
 
   const leadsRef = useRef(leads)
   const historyRef = useRef([])
@@ -53,7 +53,37 @@ export default function Dashboard({ userProfile, role, onLogout }) {
   useEffect(() => {
     fetchProjects()
     fetchCustomColumns()
+    fetchTeamMembers()
   }, [])
+
+  async function fetchTeamMembers() {
+    const { data } = await supabase.from('profiles').select('id, full_name, email, role, avatar_url').order('full_name')
+    if (data) setTeamMembers(data)
+  }
+
+  const handleAssignLead = async (leadId, targetUserId) => {
+    const { error } = await supabase.from('leads').update({ assigned_to: targetUserId, updated_at: new Date().toISOString() }).eq('id', leadId)
+    if (error) {
+      showToast('Error assigning lead: ' + error.message)
+      return
+    }
+    const updated = leads.map(l => l.id === leadId ? { ...l, assigned_to: targetUserId } : l)
+    updateLeads(updated)
+    showToast('Lead assigned')
+  }
+
+  const handleBulkAssign = async (leadIds, targetUserId) => {
+    if (!leadIds || leadIds.length === 0) return
+    const { error } = await supabase.from('leads').update({ assigned_to: targetUserId, updated_at: new Date().toISOString() }).in('id', leadIds)
+    if (error) {
+      showToast('Error assigning leads: ' + error.message)
+      return
+    }
+    const idSet = new Set(leadIds)
+    const updated = leads.map(l => idSet.has(l.id) ? { ...l, assigned_to: targetUserId } : l)
+    updateLeads(updated)
+    showToast(`${leadIds.length} leads assigned`)
+  }
 
   useEffect(() => {
     if (activeProject) fetchLeads()
@@ -394,6 +424,9 @@ export default function Dashboard({ userProfile, role, onLogout }) {
                   role={role}
                   leads={filteredLeads}
                   customColumns={customColumns}
+                  teamMembers={teamMembers}
+                  onAssignLead={handleAssignLead}
+                  onBulkAssign={handleBulkAssign}
                   onEdit={(lead) => { setEditingLead(lead); setModalOpen(true) }}
                   onDelete={handleDelete}
                   onImportClick={() => document.getElementById('excel-file-input')?.click()}
@@ -445,7 +478,15 @@ export default function Dashboard({ userProfile, role, onLogout }) {
 
       </main>
 
-      {modalOpen && <LeadModal lead={editingLead} customColumns={customColumns} onClose={() => setModalOpen(false)} onSave={handleSave} />}
+      {modalOpen && (
+        <LeadModal 
+          lead={editingLead} 
+          customColumns={customColumns} 
+          teamMembers={teamMembers}
+          onClose={() => setModalOpen(false)} 
+          onSave={handleSave} 
+        />
+      )}
       {colManagerOpen && <ColManager onClose={() => setColManagerOpen(false)} onCustomColumnsChange={setCustomColumns} />}
       {projectModalOpen && <ProjectModal project={editingProject} onClose={() => setProjectModalOpen(false)} onSave={handleSaveProject} />}
       {importFile && activeProject && (
@@ -453,6 +494,7 @@ export default function Dashboard({ userProfile, role, onLogout }) {
           file={importFile} 
           activeProject={activeProject}
           customColumns={customColumns} 
+          currentUserProfile={userProfile}
           onRefreshCustomColumns={fetchCustomColumns}
           onClose={() => setImportFile(null)} 
           onSuccess={async (count, skipped = 0, duplicates = 0) => {

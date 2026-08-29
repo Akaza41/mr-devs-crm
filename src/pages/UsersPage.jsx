@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import { logActivity } from '../lib/activityLogger'
 import { ACTIONS } from '../lib/activityActions'
@@ -36,18 +36,12 @@ export default function UsersPage({ currentUserId, onBack }) {
   const [toast, setToast] = useState('')
   const [errorMsg, setErrorMsg] = useState('')
 
-  useEffect(() => {
-    fetchActiveProfiles()
-    fetchPendingInvites()
-  }, [])
-
   const showToast = (msg) => {
     setToast(msg)
     setTimeout(() => setToast(''), 3000)
   }
 
   const fetchActiveProfiles = async () => {
-    setLoadingProfiles(true)
     const { data, error } = await supabase
       .from('profiles')
       .select('id, full_name, email, avatar_url, role, status, created_at')
@@ -60,7 +54,6 @@ export default function UsersPage({ currentUserId, onBack }) {
   }
 
   const fetchPendingInvites = async () => {
-    setLoadingInvites(true)
     const { data, error } = await supabase
       .from('pending_invites')
       .select('*')
@@ -71,6 +64,11 @@ export default function UsersPage({ currentUserId, onBack }) {
     }
     setLoadingInvites(false)
   }
+
+  useEffect(() => {
+    fetchActiveProfiles()
+    fetchPendingInvites()
+  }, [])
 
   const handleRoleChange = async (userId, userEmail, newRole) => {
     const target = profiles.find(p => p.id === userId)
