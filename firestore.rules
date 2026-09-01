@@ -2,9 +2,12 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // Helper functions for auth & role checking
     function isAuthenticated() {
       return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
     }
 
     function getUserData() {
@@ -33,66 +36,62 @@ service cloud.firestore {
     // ── USERS COLLECTION ──
     match /users/{userId} {
       allow read: if isAuthenticated();
-      allow create, update: if isAdmin() || request.auth.uid == userId;
+      allow create, update: if isOwner(userId) || isAdmin();
       allow delete: if isAdmin();
     }
 
     // ── PROJECTS COLLECTION ──
     match /projects/{projectId} {
       allow read: if isAuthenticated();
-      allow write: if isAdminOrManager();
+      allow write: if isAuthenticated();
     }
 
     // ── LEADS COLLECTION ──
     match /leads/{leadId} {
-      allow read: if isAuthenticated() && (
-        isAdminOrManager() || 
-        resource.data.assignedTo == request.auth.uid ||
-        resource.data.createdBy == request.auth.uid ||
-        resource.data.assignedTo == null ||
-        resource.data.assignedTo == ""
-      );
-      allow create: if isAuthenticated();
-      allow update: if isAuthenticated() && (
-        isAdminOrManager() || 
-        resource.data.assignedTo == request.auth.uid ||
-        resource.data.createdBy == request.auth.uid ||
-        resource.data.assignedTo == null
-      );
-      allow delete: if isAdminOrManager();
+      allow read: if isAuthenticated();
+      allow create, update, delete: if isAuthenticated();
     }
 
     // ── CUSTOM COLUMNS METADATA COLLECTION ──
     match /custom_columns/{columnId} {
       allow read: if isAuthenticated();
-      allow write: if isAdminOrManager();
+      allow write: if isAuthenticated();
     }
 
     // ── ACTIVITY LOGS COLLECTION ──
     match /activity_logs/{logId} {
       allow read: if isAuthenticated();
       allow create: if isAuthenticated();
-      allow update, delete: if isAdmin();
+      allow update, delete: if isAuthenticated();
+    }
+
+    // ── SETTINGS COLLECTION ──
+    match /settings/{settingId} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated();
+    }
+
+    // ── PENDING INVITES COLLECTION ──
+    match /pending_invites/{inviteId} {
+      allow read, write: if isAuthenticated();
     }
 
     // ── CHAT CHANNELS & SUBCOLLECTION MESSAGES ──
     match /chat_channels/{channelId} {
-      allow read: if isAuthenticated();
-      allow create, update: if isAuthenticated();
-      allow delete: if isAdminOrManager();
+      allow read, write: if isAuthenticated();
 
       match /messages/{messageId} {
-        allow read: if isAuthenticated();
-        allow create: if isAuthenticated() && request.resource.data.senderId == request.auth.uid;
-        allow update, delete: if isAdmin() || resource.data.senderId == request.auth.uid;
+        allow read, write: if isAuthenticated();
       }
     }
 
-    // ── OUTREACH EVENTS COLLECTION ──
+    // ── OUTREACH EVENTS & TOUCHES ──
     match /outreach_events/{eventId} {
-      allow read: if isAuthenticated() && (isAdminOrManager() || resource.data.userId == request.auth.uid);
-      allow create: if isAuthenticated() && request.resource.data.userId == request.auth.uid;
-      allow update, delete: if isAdmin();
+      allow read, write: if isAuthenticated();
+    }
+
+    match /outreach_touches/{touchId} {
+      allow read, write: if isAuthenticated();
     }
   }
 }
