@@ -1,5 +1,6 @@
 import Login from '../pages/Login'
-import { supabase } from '../lib/supabase'
+import { auth, googleProvider } from '../lib/firebase'
+import { signOut, signInWithPopup } from 'firebase/auth'
 
 /**
  * AuthGuard component wraps protected application views.
@@ -47,13 +48,8 @@ export default function AuthGuard({ userProfile, loading, unauthorized, children
   // ── UNAUTHORIZED USER (NO PROFILE MATCH IN WORKSPACE) ──
   if (unauthorized) {
     const handleTryDifferentAccount = async () => {
-      await supabase.auth.signOut()
-      await supabase.auth.signInWithOAuth({
-        provider: 'google',
-        options: {
-          redirectTo: window.location.origin,
-        },
-      })
+      await signOut(auth)
+      await signInWithPopup(auth, googleProvider)
     }
 
     return (
@@ -135,7 +131,7 @@ export default function AuthGuard({ userProfile, loading, unauthorized, children
 
             <button
               onClick={async () => {
-                await supabase.auth.signOut()
+                await signOut(auth)
                 window.location.href = '/'
               }}
               style={{

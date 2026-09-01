@@ -1,7 +1,16 @@
 import { useState, useEffect } from 'react'
 import * as xlsx from 'xlsx'
-import { supabase } from '../lib/supabase'
-// ── Activity Logging ──
+import { db } from '../lib/firebase'
+import {
+  collection,
+  doc,
+  getDocs,
+  addDoc,
+  writeBatch,
+  query,
+  where,
+  serverTimestamp
+} from 'firebase/firestore'
 import { logActivity } from '../lib/activityLogger'
 import { ACTIONS } from '../lib/activityActions'
 
@@ -27,18 +36,15 @@ export default function ImportModal({ file, activeProject, customColumns = [], c
     ...customColumns.map(c => c.column_name)
   ]
 
-  // Column names that should NEVER be mapped — these are row IDs / serial numbers from Excel
   const blocklist = ['id', 'no', 'sr', 'sr_no', 'sno', 's_no', 'serial', 'serial_no', 'row', 'row_no', 'index', 'sl', 'sl_no', 'project_id', '#']
 
   const matchHeader = (header) => {
     if (!header) return null
     const trimmed = header.toString().trim()
-    // Block # column immediately
     if (trimmed === '#') return null
     const norm = trimmed.toLowerCase().replace(/[^a-z0-9]/g, '_').replace(/_+/g, '_').replace(/^_|_$/g, '')
     if (blocklist.includes(norm)) return null
 
-    // Explicit aliases — maps common Excel column names to DB fields
     const aliases = {
       'business_name': 'hospital_name',
       'clinic_name': 'hospital_name',
@@ -103,24 +109,37 @@ export default function ImportModal({ file, activeProject, customColumns = [], c
 
   useEffect(() => {
     if (!file) return
+    setLoading(true)
+    setError(null)
+
     const reader = new FileReader()
     reader.onload = (e) => {
       try {
         const data = new Uint8Array(e.target.result)
         const workbook = xlsx.read(data, { type: 'array' })
-        const sheetName = workbook.SheetNames[0]
-        const worksheet = workbook.Sheets[sheetName]
+        const firstSheetName = workbook.SheetNames[0]
+        const worksheet = workbook.Sheets[firstSheetName]
+        
         const json = xlsx.utils.sheet_to_json(worksheet, { header: 1, defval: '' })
         
-        if (json.length === 0) {
-          setError('No data found in the file.')
+        if (!json || json.length === 0) {
+          setError('The selected file appears to be empty.')
           setLoading(false)
           return
         }
 
         setRawRows(json)
-        const guessIdx = json.findIndex(row => row.filter(cell => typeof cell === 'string' && cell.trim() !== '').length > 1)
-        setHeaderRowIdx(guessIdx >= 0 ? guessIdx : 0)
+
+        let bestHeaderIdx = 0
+        let maxFilledCount = 0
+        json.slice(0, 10).forEach((row, idx) => {
+          const filled = row.filter(cell => cell && cell.toString().trim() !== '').length
+          if (filled > maxFilledCount) {
+            maxFilledCount = filled
+            bestHeaderIdx = idx
+          }
+        })
+        setHeaderRowIdx(bestHeaderIdx)
         setLoading(false)
       } catch (err) {
         setError('Failed to parse file: ' + err.message)
@@ -130,106 +149,52 @@ export default function ImportModal({ file, activeProject, customColumns = [], c
     reader.readAsArrayBuffer(file)
   }, [file])
 
-  const handleNext = () => {
-    const headers = rawRows[headerRowIdx] || []
-    const data = rawRows.slice(headerRowIdx + 1).filter(r => r.length > 0 && r.some(c => c !== ''))
+  const handleNextToMapping = () => {
+    if (!rawRows || rawRows.length <= headerRowIdx) return
 
-    const mapped = headers.map(h => ({
-      original: h?.toString() || 'Unknown',
-      mapped: matchHeader(h?.toString() || '')
+    const rawHeaders = rawRows[headerRowIdx] || []
+    const mapped = rawHeaders.map(h => ({
+      original: h ? h.toString().trim() : '',
+      mapped: matchHeader(h)
     }))
 
-    setMappedHeaders(mapped)
-    setDataRows(data)
+    const rows = rawRows.slice(headerRowIdx + 1).filter(r => r.some(c => c && c.toString().trim() !== ''))
 
-    const allRows = new Set(data.map((_, i) => i))
-    const allCols = new Set(mapped.map((_, i) => i))
-    setSelectedRows(allRows)
-    setSelectedCols(allCols)
+    setMappedHeaders(mapped)
+    setDataRows(rows)
+
+    setSelectedRows(new Set(rows.map((_, i) => i)))
+    setSelectedCols(new Set(mapped.map((_, i) => i)))
 
     setStep(2)
   }
 
-  const toggleRow = (idx) => {
-    const newSet = new Set(selectedRows)
-    if (newSet.has(idx)) newSet.delete(idx)
-    else newSet.add(idx)
-    setSelectedRows(newSet)
-  }
-
-  const toggleCol = (idx) => {
-    const newSet = new Set(selectedCols)
-    if (newSet.has(idx)) newSet.delete(idx)
-    else newSet.add(idx)
-    setSelectedCols(newSet)
-  }
-
-  const handleMapChange = (colIdx, value) => {
-    const newVal = value || null
+  const handleHeaderMappingChange = (index, newMappedValue) => {
     const updated = [...mappedHeaders]
-    updated[colIdx] = { ...updated[colIdx], mapped: newVal }
+    updated[index].mapped = newMappedValue === 'unmapped' ? null : newMappedValue
     setMappedHeaders(updated)
-
-    const newSelectedCols = new Set(selectedCols)
-    if (newVal) {
-      newSelectedCols.add(colIdx)
-    } else {
-      newSelectedCols.delete(colIdx)
-    }
-    setSelectedCols(newSelectedCols)
   }
 
-  const handleCreateCustomColumn = async () => {
-    const colName = prompt('Enter a name for the new custom column:')
-    if (!colName || !colName.trim()) return
+  const handleCreateCustomColumn = async (colName, type) => {
+    if (!colName.trim()) return
+    const key = colName.trim().toLowerCase().replace(/[^a-z0-9]/g, '_').replace(/_+/g, '_').replace(/^_|_$/g, '')
 
-    const key = colName.toLowerCase().replace(/[^a-z0-9]/g, '_')
-    const allDbCols = dbCols
-    if (allDbCols.includes(key)) {
-      alert('A column with this name already exists.')
-      return
-    }
-
-    const colType = prompt('Enter column type (text, number, date, boolean) [default: text]:', 'text')
-    const finalType = colType?.trim().toLowerCase() || 'text'
-    
-    let pgType = 'text'
     let mappedType = 'Text'
-    if (finalType === 'number' || finalType === 'numeric') {
-      pgType = 'numeric'
-      mappedType = 'Number'
-    } else if (finalType === 'date') {
-      pgType = 'date'
-      mappedType = 'Date'
-    } else if (finalType === 'boolean' || finalType === 'yes/no') {
-      pgType = 'text'
-      mappedType = 'Yes/No'
-    }
+    if (type === 'number') mappedType = 'Number'
+    else if (type === 'date') mappedType = 'Date'
+    else if (type === 'boolean' || type === 'yes/no') mappedType = 'Yes/No'
 
     setLoading(true)
     try {
-      const { error: rpcError } = await supabase.rpc('add_custom_column', {
-        col_name: key,
-        col_type: pgType
-      })
-      if (rpcError) {
-        alert('Error adding column to database: ' + rpcError.message)
-        setLoading(false)
-        return
-      }
-
       const newCol = {
-        column_name: key,
-        display_name: colName.trim(),
-        data_type: mappedType
+        columnName: key,
+        displayName: colName.trim(),
+        dataType: mappedType,
+        createdAt: serverTimestamp()
       }
       
-      const { data, error } = await supabase.from('custom_columns').insert([newCol]).select().single()
-      if (error) {
-        alert('Error saving custom column metadata: ' + error.message)
-      } else if (data && onRefreshCustomColumns) {
-        await onRefreshCustomColumns()
-      }
+      await addDoc(collection(db, 'custom_columns'), newCol)
+      if (onRefreshCustomColumns) await onRefreshCustomColumns()
     } catch (err) {
       alert('An unexpected error occurred: ' + err.message)
     } finally {
@@ -241,7 +206,6 @@ export default function ImportModal({ file, activeProject, customColumns = [], c
     if (selectedRows.size === 0 || selectedCols.size === 0 || !activeProject) return
     setLoading(true)
     
-    // Check if there are any checked columns that are unmapped
     const unmappedCheckedCols = []
     mappedHeaders.forEach((h, idx) => {
       if (selectedCols.has(idx) && !h.mapped) {
@@ -257,17 +221,6 @@ export default function ImportModal({ file, activeProject, customColumns = [], c
       return
     }
 
-    // SAFE LIST of allowed DB columns — only these can ever be inserted directly
-    const allowedColumns = new Set([
-      'hospital_name', 'lead_name', 'address', 'type', 'rating', 'reviews', 'phone', 'number_type',
-      'has_website', 'priority', 'stage', 'fb_found', 'contacted', 'reply', 'notes',
-      'pain_point', 'current_solution', 'decision_maker', 'next_followup_due', 'created_by', 'assigned_to',
-      'project_id',
-      ...customColumns.map(c => c.column_name)
-    ])
-
-    // ── NORMALIZATION: Convert boolean-like Excel values to canonical "Yes" / "No"
-    // Ensures values like "TRUE", "1", "yes", "y" are standardized for the UI badges
     const normalizeYesNo = (val) => {
       if (!val) return 'No'
       const v = val.toString().trim().toLowerCase()
@@ -275,8 +228,6 @@ export default function ImportModal({ file, activeProject, customColumns = [], c
       return 'No'
     }
 
-    // ── NORMALIZATION: Extract clean numeric value for rating
-    // Prevents DB coercion errors if Excel has "4.2 stars" or "4/5" instead of just 4.2
     const parseRating = (val) => {
       if (!val) return null
       const match = val.toString().match(/[0-9.]+/)
@@ -294,8 +245,7 @@ export default function ImportModal({ file, activeProject, customColumns = [], c
       const newRow = {}
       mappedHeaders.forEach((h, colIdx) => {
         if (!selectedCols.has(colIdx)) return
-        // Only insert if mapped AND in the allowed list — never insert 'id'
-        if (h.mapped && allowedColumns.has(h.mapped)) {
+        if (h.mapped) {
           let val = row[colIdx]?.toString().trim()
           
           if (val) {
@@ -310,22 +260,15 @@ export default function ImportModal({ file, activeProject, customColumns = [], c
         }
       })
 
-      // Always set project_id from activeProject — never from Excel
-      newRow.project_id = activeProject.id
+      newRow.projectId = activeProject.id
+      if (currentUserProfile?.id) newRow.createdBy = currentUserProfile.id
 
-      // Set creator ID if available
-      if (currentUserProfile?.id) {
-        newRow.created_by = currentUserProfile.id
-      }
-
-      // Sync lead_name and hospital_name
       if (newRow.hospital_name && !newRow.lead_name) {
         newRow.lead_name = newRow.hospital_name
       } else if (newRow.lead_name && !newRow.hospital_name) {
         newRow.hospital_name = newRow.lead_name
       }
 
-      // Final safety — delete id no matter what
       delete newRow.id
 
       if (Object.keys(newRow).length > 1) {
@@ -339,164 +282,175 @@ export default function ImportModal({ file, activeProject, customColumns = [], c
       return
     }
 
-    // ── DUPLICATE DETECTION: prefetch existing leads for this project ──────────
-    // Fetch only hospital_name and phone — the two fields used to fingerprint a lead.
-    // Scoped to activeProject.id so leads in other projects are never treated as duplicates.
-    const { data: existingLeads, error: fetchError } = await supabase
-      .from('leads')
-      .select('hospital_name, phone')
-      .eq('project_id', activeProject.id)
+    // ── DUPLICATE DETECTION PREFETCH ──
+    try {
+      const qExisting = query(
+        collection(db, 'leads'),
+        where('projectId', '==', activeProject.id)
+      )
+      const existingSnap = await getDocs(qExisting)
 
-    if (fetchError) {
-      // If the prefetch fails we bail out rather than silently inserting without checking.
-      alert('Error checking for duplicates: ' + fetchError.message)
-      setLoading(false)
-      return
-    }
+      const existingFingerprints = new Set()
+      const existingNames = new Set()
 
-    // existingFingerprints: Set of "name||phone" strings for leads that HAVE a phone.
-    // Used when the incoming row also has a phone — matches the exact name+phone pair.
-    const existingFingerprints = new Set()
-
-    // existingNames: Set of just the name for every existing lead, regardless of phone.
-    // Used as a fallback when the incoming row has NO phone — matches by name alone,
-    // because a phoneless row with a matching name is almost certainly the same lead.
-    const existingNames = new Set()
-
-    for (const lead of existingLeads) {
-      const name = lead.hospital_name?.trim().toLowerCase() || ''
-      const phone = lead.phone?.trim().toLowerCase() || ''
-      if (name) {
-        // Always add to the name-only set — covers the no-phone fallback for incoming rows.
-        existingNames.add(name)
-        // Add the full fingerprint only for leads that have a phone.
-        if (phone) existingFingerprints.add(`${name}||${phone}`)
-      }
-    }
-    // ── END DUPLICATE DETECTION SETUP ──────────────────────────────────────────
-
-    const rowsToInsert = []
-    // skipped: rows dropped because hospital_name is blank (original behavior, unchanged).
-    let skipped = 0
-    // duplicates: rows dropped because they already exist in this project (new behavior).
-    let duplicates = 0
-
-    for (const row of rawInsertRows) {
-      const n = row.hospital_name?.trim().toLowerCase()
-
-      // Since hospital_name is still required (not-null constraint), skip rows that are completely missing it.
-      if (!n) {
-        skipped++
-        continue
-      }
-
-      // ── DUPLICATE CHECK ────────────────────────────────────────────────────
-      // Normalize the incoming phone so comparisons are case/space insensitive.
-      const incomingPhone = row.phone?.trim().toLowerCase() || ''
-
-      let isDuplicate
-      if (incomingPhone) {
-        // Incoming row HAS a phone: check the combined name+phone fingerprint.
-        // Two leads with the same name but different phone numbers are NOT duplicates.
-        isDuplicate = existingFingerprints.has(`${n}||${incomingPhone}`)
-      } else {
-        // Incoming row has NO phone: fall back to name-only check.
-        // A phoneless row with a matching name is treated as the same lead.
-        isDuplicate = existingNames.has(n)
-      }
-
-      if (isDuplicate) {
-        // Count it and skip — we report the total to the user at the end.
-        duplicates++
-        continue
-      }
-      // ── END DUPLICATE CHECK ────────────────────────────────────────────────
-
-      rowsToInsert.push(row)
-    }
-
-    if (rowsToInsert.length === 0) {
-      // Nothing to insert — report both skip counts so the user sees what happened.
-      onSuccess(0, skipped, duplicates)
-      return
-    }
-
-    // Log sample to verify no id field (unchanged from original).
-    console.log('Sample row before insert (should have NO id field):', JSON.stringify(rowsToInsert[0]))
-    console.log('Keys in row:', Object.keys(rowsToInsert[0]))
-
-    // ── CHUNKING: Split the insert into smaller batches to avoid Supabase limits ──
-    // Inserting thousands of rows in a single request can exceed payload size limits.
-    // We break the rows into chunks of 200 and insert them sequentially.
-    const CHUNK_SIZE = 200
-    let insertedCount = 0
-
-    for (let i = 0; i < rowsToInsert.length; i += CHUNK_SIZE) {
-      const chunk = rowsToInsert.slice(i, i + CHUNK_SIZE)
-      const { error } = await supabase.from('leads').insert(chunk)
-      
-      if (error) {
-        alert(`Error importing leads (stopped at row ${insertedCount}): ${error.message}`)
-        setLoading(false)
-        // If some chunks succeeded before this failure, we still report what we managed to insert
-        if (insertedCount > 0) {
-          onSuccess(insertedCount, skipped, duplicates)
+      existingSnap.docs.forEach(docSnap => {
+        const d = docSnap.data()
+        const name = (d.hospitalName || d.leadName || '').trim().toLowerCase()
+        const phone = (d.phone || '').trim().toLowerCase()
+        if (name) {
+          existingNames.add(name)
+          if (phone) existingFingerprints.add(`${name}||${phone}`)
         }
+      })
+
+      const rowsToInsert = []
+      let skipped = 0
+      let duplicates = 0
+
+      for (const row of rawInsertRows) {
+        const name = (row.hospital_name || row.lead_name || '').trim().toLowerCase()
+        if (!name) {
+          skipped++
+          continue
+        }
+
+        const phone = (row.phone || '').trim().toLowerCase()
+        const isDuplicate = phone ? existingFingerprints.has(`${name}||${phone}`) : existingNames.has(name)
+
+        if (isDuplicate) {
+          duplicates++
+          continue
+        }
+
+        rowsToInsert.push(row)
+      }
+
+      if (rowsToInsert.length === 0) {
+        onSuccess(0, skipped, duplicates)
         return
       }
-      insertedCount += chunk.length
-    }
 
-    // Pass both skip counts to the success handler so the toast can show each reason.
-    onSuccess(insertedCount, skipped, duplicates)
+      // ── BATCH INSERT TO FIRESTORE ──
+      const CHUNK_SIZE = 400
+      let insertedCount = 0
 
-    // ── Log the completed import event (fire-and-forget, never blocks UI) ──
-    // Only fires if at least one row was actually inserted.
-    if (insertedCount > 0) {
+      for (let i = 0; i < rowsToInsert.length; i += CHUNK_SIZE) {
+        const chunk = rowsToInsert.slice(i, i + CHUNK_SIZE)
+        const batch = writeBatch(db)
+
+        for (const item of chunk) {
+          const docRef = doc(collection(db, 'leads'))
+          batch.set(docRef, {
+            projectId: activeProject.id,
+            hospitalName: item.hospital_name || item.lead_name || 'Unnamed Lead',
+            leadName: item.lead_name || item.hospital_name || 'Unnamed Lead',
+            address: item.address || '',
+            type: item.type || '',
+            rating: item.rating ? Number(item.rating) : null,
+            reviews: item.reviews ? Number(item.reviews) : 0,
+            phone: item.phone || '',
+            numberType: item.number_type || 'No Number',
+            hasWebsite: item.has_website || 'No',
+            priority: item.priority || 'Medium',
+            stage: item.stage || 'New',
+            fbFound: item.fb_found || 'No',
+            contacted: item.contacted || 'No',
+            reply: item.reply || '—',
+            notes: item.notes || '',
+            createdBy: currentUserProfile?.id || null,
+            createdAt: serverTimestamp(),
+            updatedAt: serverTimestamp()
+          })
+        }
+
+        await batch.commit()
+        insertedCount += chunk.length
+      }
+
       logActivity({
         action: ACTIONS.LEAD_IMPORTED,
         entityType: 'lead',
         projectId: activeProject.id,
-        metadata: {
-          file_name: file.name,
-          total_rows: rawInsertRows.length,
-          inserted: insertedCount,
-          skipped,
-          duplicates,
-        },
+        metadata: { count: insertedCount, fileName: file.name }
       })
+
+      onSuccess(insertedCount, skipped, duplicates)
+
+    } catch (err) {
+      console.error('Import error:', err)
+      alert('Error importing leads: ' + err.message)
+      setLoading(false)
+    }
+  }
+
+  const toggleSelectAllRows = () => {
+    if (selectedRows.size === dataRows.length) {
+      setSelectedRows(new Set())
+    } else {
+      setSelectedRows(new Set(dataRows.map((_, i) => i)))
+    }
+  }
+
+  const toggleSelectAllCols = () => {
+    if (selectedCols.size === mappedHeaders.length) {
+      setSelectedCols(new Set())
+    } else {
+      setSelectedCols(new Set(mappedHeaders.map((_, i) => i)))
     }
   }
 
   return (
-    <div className="modal-overlay">
-      <div className="modal" style={{ maxWidth: '90vw', width: '1000px', maxHeight: '90vh', display: 'flex', flexDirection: 'column' }}>
-        <div className="modal-header">
-          <span style={{ fontSize: '13px', fontWeight: '500', color: '#ededed' }}>
-            {step === 1 ? 'Step 1: Select Header Row' : 'Step 2: Select Data to Import'}
-          </span>
-          <button onClick={onClose} disabled={loading} style={{ background: 'none', border: 'none', color: '#555', cursor: 'pointer', fontSize: '18px', lineHeight: 1 }}>×</button>
-        </div>
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.75)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
+      <div style={{ background: '#161616', border: '0.5px solid #2a2a2a', borderRadius: '12px', width: '100%', maxWidth: step === 1 ? '640px' : '1000px', maxHeight: '90vh', display: 'flex', flexDirection: 'column', overflow: 'hidden', boxShadow: '0 20px 50px rgba(0,0,0,0.8)' }}>
         
-        <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '16px', flex: 1, overflow: 'hidden' }}>
+        {/* Header */}
+        <div style={{ padding: '16px 24px', borderBottom: '0.5px solid #2a2a2a', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div>
+            <h2 style={{ fontSize: '16px', fontWeight: '600', color: '#ededed', margin: 0 }}>
+              Import Leads from File — {step === 1 ? 'Step 1: Select Header Row' : 'Step 2: Map & Preview Data'}
+            </h2>
+            <p style={{ fontSize: '12px', color: '#777', margin: '4px 0 0 0' }}>
+              File: <span style={{ color: '#3ecf8e' }}>{file?.name}</span> | Project: <span style={{ color: '#ededed' }}>{activeProject?.name}</span>
+            </p>
+          </div>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', color: '#777', fontSize: '20px', cursor: 'pointer' }}>×</button>
+        </div>
+
+        {/* Body */}
+        <div style={{ flex: 1, padding: '24px', overflowY: 'auto' }}>
           {loading ? (
-            <div style={{ padding: '40px', textAlign: 'center', color: '#a0a0a0', fontSize: '13px' }}>Parsing file...</div>
+            <div style={{ textAlign: 'center', padding: '40px 0', color: '#888' }}>
+              <div className="spinner" style={{ margin: '0 auto 16px auto' }} />
+              Processing data...
+            </div>
           ) : error ? (
-            <div style={{ color: '#f87171', fontSize: '13px' }}>{error}</div>
+            <div style={{ background: 'rgba(239, 68, 68, 0.1)', border: '0.5px solid rgba(239, 68, 68, 0.3)', padding: '16px', borderRadius: '8px', color: '#f87171' }}>
+              {error}
+            </div>
           ) : step === 1 ? (
-            <>
-              <div style={{ fontSize: '13px', color: '#a0a0a0' }}>Select the row that contains your column names.</div>
-              <div className="table-wrap" style={{ flex: 1, overflow: 'auto' }}>
-                <table>
+            <div>
+              <p style={{ fontSize: '13px', color: '#aaa', marginBottom: '16px' }}>
+                Select which row in your file contains the column headers:
+              </p>
+
+              <div style={{ overflowX: 'auto', border: '0.5px solid #2a2a2a', borderRadius: '8px' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px', textIndent: 'left' }}>
                   <tbody>
-                    {rawRows.map((row, i) => (
-                      <tr key={i} style={{ background: i === headerRowIdx ? 'rgba(62,207,142,0.1)' : 'transparent' }}>
-                        <td style={{ width: '40px', textAlign: 'center' }}>
-                          <input type="radio" checked={i === headerRowIdx} onChange={() => setHeaderRowIdx(i)} style={{ accentColor: '#3ecf8e', cursor: 'pointer' }} />
+                    {rawRows.slice(0, 10).map((row, idx) => (
+                      <tr 
+                        key={idx}
+                        onClick={() => setHeaderRowIdx(idx)}
+                        style={{ 
+                          background: headerRowIdx === idx ? 'rgba(62, 207, 142, 0.15)' : 'transparent',
+                          borderBottom: '0.5px solid #222',
+                          cursor: 'pointer'
+                        }}
+                      >
+                        <td style={{ width: '40px', padding: '8px', textAlign: 'center', color: headerRowIdx === idx ? '#3ecf8e' : '#555', fontWeight: 'bold' }}>
+                          {headerRowIdx === idx ? '➜' : idx + 1}
                         </td>
-                        <td style={{ color: '#555', fontSize: '11px', width: '40px' }}>{i + 1}</td>
-                        {row.map((cell, j) => (
-                          <td key={j} style={{ whiteSpace: 'nowrap', maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis', color: i === headerRowIdx ? '#3ecf8e' : '#ededed' }}>
+                        {row.map((cell, cIdx) => (
+                          <td key={cIdx} style={{ padding: '8px', color: '#ccc', maxWidth: '150px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                             {cell?.toString() || ''}
                           </td>
                         ))}
@@ -505,113 +459,78 @@ export default function ImportModal({ file, activeProject, customColumns = [], c
                   </tbody>
                 </table>
               </div>
-            </>
+            </div>
           ) : (
-            <>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
-                <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
-                  <button className="btn-ghost" onClick={() => setSelectedRows(new Set(dataRows.map((_, i) => i)))}>Select All Rows</button>
-                  <button className="btn-ghost" onClick={() => setSelectedRows(new Set())}>Deselect All Rows</button>
-                  <div style={{ width: '1px', background: '#333', margin: '0 5px', alignSelf: 'stretch' }} />
-                  <button className="btn-ghost" onClick={() => setSelectedCols(new Set(mappedHeaders.map((_, i) => i)))}>Select All Columns</button>
-                  <button className="btn-ghost" onClick={() => setSelectedCols(new Set())}>Deselect All Columns</button>
-                  <div style={{ width: '1px', background: '#333', margin: '0 5px', alignSelf: 'stretch' }} />
-                  <button className="btn-ghost" onClick={handleCreateCustomColumn} style={{ color: '#3ecf8e' }}>➕ Add Custom Column</button>
-                </div>
-                <div style={{ fontSize: '13px', color: '#ededed' }}>
-                  Importing <strong style={{ color: '#3ecf8e' }}>{selectedRows.size}</strong> rows and <strong style={{ color: '#3ecf8e' }}>{selectedCols.size}</strong> columns
+            <div>
+              {/* Mapping Controls */}
+              <div style={{ marginBottom: '20px' }}>
+                <h3 style={{ fontSize: '14px', color: '#ddd', marginBottom: '12px' }}>Column Mappings</h3>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '12px' }}>
+                  {mappedHeaders.map((h, idx) => (
+                    <div key={idx} style={{ background: '#111', border: '0.5px solid #2a2a2a', padding: '10px 12px', borderRadius: '8px' }}>
+                      <div style={{ fontSize: '11px', color: '#777', marginBottom: '4px' }}>Original: <strong style={{ color: '#fff' }}>{h.original || '(Empty)'}</strong></div>
+                      <select 
+                        className="input-base"
+                        style={{ padding: '4px 8px', fontSize: '12px' }}
+                        value={h.mapped || 'unmapped'}
+                        onChange={(e) => handleHeaderMappingChange(idx, e.target.value)}
+                      >
+                        <option value="unmapped">-- Ignore Column --</option>
+                        <optgroup label="Standard Fields">
+                          <option value="hospital_name">Hospital / Lead Name</option>
+                          <option value="phone">Phone Number</option>
+                          <option value="address">Address</option>
+                          <option value="type">Type / Category</option>
+                          <option value="rating">Rating</option>
+                          <option value="reviews">Reviews Count</option>
+                          <option value="has_website">Has Website (Yes/No)</option>
+                          <option value="fb_found">FB Found (Yes/No)</option>
+                          <option value="priority">Priority</option>
+                          <option value="stage">Pipeline Stage</option>
+                          <option value="notes">Notes</option>
+                        </optgroup>
+                        {customColumns.length > 0 && (
+                          <optgroup label="Custom Columns">
+                            {customColumns.map(c => (
+                              <option key={c.id} value={c.column_name}>{c.display_name}</option>
+                            ))}
+                          </optgroup>
+                        )}
+                      </select>
+                    </div>
+                  ))}
                 </div>
               </div>
 
-              <div className="table-wrap" style={{ flex: 1, overflow: 'auto' }}>
-                <table>
-                  <thead>
-                    <tr>
-                      <th style={{ width: '40px', position: 'sticky', top: 0, zIndex: 10, background: '#1a1a1a' }}></th>
-                      <th style={{ width: '40px', position: 'sticky', top: 0, zIndex: 10, background: '#1a1a1a' }}>#</th>
-                      {mappedHeaders.map((h, i) => (
-                        <th key={i} style={{ position: 'sticky', top: 0, zIndex: 10, background: '#1a1a1a', minWidth: '150px' }}>
-                          <div style={{ display: 'flex', alignItems: 'flex-start', gap: '6px', opacity: selectedCols.has(i) ? 1 : 0.5 }}>
-                            <input 
-                              type="checkbox" 
-                              checked={selectedCols.has(i)} 
-                              onChange={() => toggleCol(i)} 
-                              style={{ accentColor: '#3ecf8e', cursor: 'pointer', marginTop: '4px' }} 
-                            />
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', alignItems: 'flex-start', width: '100%' }}>
-                              <span style={{ fontSize: '12px', fontWeight: '500', color: '#ededed', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '120px' }} title={h.original}>
-                                {h.original}
-                              </span>
-                              <select
-                                value={h.mapped || ''}
-                                onChange={(e) => handleMapChange(i, e.target.value)}
-                                style={{
-                                  fontSize: '11px',
-                                  background: '#141414',
-                                  border: '0.5px solid #333',
-                                  borderRadius: '4px',
-                                  color: h.mapped ? '#3ecf8e' : '#f87171',
-                                  padding: '4px 6px',
-                                  cursor: 'pointer',
-                                  outline: 'none',
-                                  width: '100%',
-                                  maxWidth: '130px'
-                                }}
-                              >
-                                <option value="" style={{ color: '#f87171' }}>⚠️ Unmapped</option>
-                                {dbCols.map(col => {
-                                  const custom = customColumns.find(c => c.column_name === col);
-                                  const label = custom ? `${custom.display_name} (Custom)` : col.replace(/_/g, ' ');
-                                  return (
-                                    <option key={col} value={col} style={{ color: '#ededed' }}>
-                                      {label}
-                                    </option>
-                                  );
-                                })}
-                              </select>
-                            </div>
-                          </div>
-                        </th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {dataRows.map((row, i) => (
-                      <tr key={i} style={{ opacity: selectedRows.has(i) ? 1 : 0.4 }}>
-                        <td style={{ textAlign: 'center' }}>
-                          <input type="checkbox" checked={selectedRows.has(i)} onChange={() => toggleRow(i)} style={{ accentColor: '#3ecf8e', cursor: 'pointer' }} />
-                        </td>
-                        <td style={{ color: '#555', fontSize: '11px' }}>{i + 1}</td>
-                        {mappedHeaders.map((h, j) => (
-                          <td key={j} style={{ whiteSpace: 'nowrap', maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis', color: selectedCols.has(j) ? '#ededed' : '#555' }}>
-                            {row[j]?.toString() || ''}
-                          </td>
-                        ))}
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+              {/* Data Table Preview */}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                <div style={{ fontSize: '12px', color: '#aaa' }}>
+                  Ready to import <strong style={{ color: '#3ecf8e' }}>{selectedRows.size}</strong> of {dataRows.length} rows.
+                </div>
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <button onClick={toggleSelectAllRows} style={{ background: 'none', border: 'none', color: '#3ecf8e', fontSize: '12px', cursor: 'pointer' }}>Toggle Rows</button>
+                  <button onClick={toggleSelectAllCols} style={{ background: 'none', border: 'none', color: '#3ecf8e', fontSize: '12px', cursor: 'pointer' }}>Toggle Cols</button>
+                </div>
               </div>
-            </>
+            </div>
           )}
         </div>
 
-        <div className="modal-footer" style={{ justifyContent: step === 1 ? 'flex-end' : 'space-between' }}>
+        {/* Footer */}
+        <div style={{ padding: '16px 24px', borderTop: '0.5px solid #2a2a2a', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#111' }}>
           {step === 1 ? (
             <>
-              <button className="btn-ghost" onClick={onClose} disabled={loading}>❌ Cancel</button>
-              <button className="btn-primary" onClick={handleNext} disabled={loading || rawRows.length === 0}>Next →</button>
+              <button onClick={onClose} className="btn-secondary" style={{ padding: '8px 16px', fontSize: '12px' }}>Cancel</button>
+              <button onClick={handleNextToMapping} className="btn-primary" style={{ padding: '8px 16px', fontSize: '12px' }}>Next: Map Headers ➜</button>
             </>
           ) : (
             <>
-              <button className="btn-ghost" onClick={() => setStep(1)} disabled={loading}>← Back</button>
-              <div style={{ display: 'flex', gap: '10px' }}>
-                <button className="btn-ghost" onClick={onClose} disabled={loading}>❌ Cancel</button>
-                <button className="btn-primary" onClick={handleConfirm} disabled={loading || selectedRows.size === 0 || selectedCols.size === 0}>✅ Confirm Import</button>
-              </div>
+              <button onClick={() => setStep(1)} className="btn-secondary" style={{ padding: '8px 16px', fontSize: '12px' }}>← Back to Step 1</button>
+              <button onClick={handleConfirm} className="btn-primary" style={{ padding: '8px 24px', fontSize: '12px' }}>Confirm & Import Leads</button>
             </>
           )}
         </div>
+
       </div>
     </div>
   )

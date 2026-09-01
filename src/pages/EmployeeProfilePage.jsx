@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
-import { supabase } from '../lib/supabase'
+import { db, auth } from '../lib/firebase'
+import { doc, getDoc, updateDoc } from 'firebase/firestore'
 import EmployeeHeader from '../components/team/EmployeeHeader'
 import EmployeeStatsCards from '../components/team/EmployeeStatsCards'
 import EmployeeProfileEditor from '../components/team/EmployeeProfileEditor'
@@ -16,28 +17,38 @@ export default function EmployeeProfilePage({ userId, onBack }) {
 
   const fetchMemberData = useCallback(async () => {
     if (!userId) return
-    const { data, error } = await supabase
-      .from('profiles')
-      .select('id, email, role, full_name, avatar_url, created_at')
-      .eq('id', userId)
-      .single()
+    try {
+      const userRef = doc(db, 'users', userId)
+      const snap = await getDoc(userRef)
       
-    if (!error && data) {
-      // Fetch metrics for this user
-      const { data: metricsData } = await supabase.rpc('get_team_metrics', { p_user_id: userId })
-      const metrics = metricsData && metricsData.length > 0 ? metricsData[0] : null
-      
-      setMember({ ...data, metrics })
+      if (snap.exists()) {
+        const data = snap.data()
+        setMember({
+          id: snap.id,
+          email: data.email || '',
+          role: data.role || 'sales',
+          full_name: data.displayName || data.email || 'Team Member',
+          avatar_url: data.photoURL || null,
+          created_at: data.createdAt ? new Date(data.createdAt.seconds * 1000).toISOString() : new Date().toISOString(),
+          title: data.title || '',
+          phone: data.phone || '',
+          bio: data.bio || '',
+          specialties: data.specialties || [],
+          metrics: { leads_added: 0, leads_edited: 0, total_actions: 0, last_active: null }
+        })
+      } else {
+        setMember(null)
+      }
+    } catch (err) {
+      console.error('Error fetching member profile from Firestore:', err)
+      setMember(null)
+    } finally {
+      setLoading(false)
     }
-    setLoading(false)
   }, [userId])
 
   useEffect(() => {
-    // Get the ID of the currently logged-in user to enforce safety rules in the editor
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setCurrentUser(session?.user?.id || null)
-    })
-    
+    setCurrentUser(auth.currentUser?.uid || null)
     if (userId) fetchMemberData()
   }, [userId, fetchMemberData])
 
@@ -47,13 +58,20 @@ export default function EmployeeProfilePage({ userId, onBack }) {
   }
 
   const handleSaveProfile = async (updates) => {
-    const { error } = await supabase.from('profiles').update(updates).eq('id', userId)
-    if (!error) {
+    try {
+      await updateDoc(doc(db, 'users', userId), {
+        displayName: updates.full_name || updates.displayName,
+        title: updates.title,
+        phone: updates.phone,
+        bio: updates.bio,
+        specialties: updates.specialties,
+        updatedAt: new Date()
+      })
       setMember({ ...member, ...updates })
       showToast('Profile updated successfully')
       return true
-    } else {
-      showToast('Failed to update profile: ' + error.message)
+    } catch (err) {
+      showToast('Failed to update profile: ' + err.message)
       return false
     }
   }

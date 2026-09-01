@@ -1,5 +1,7 @@
 import { useState, useEffect } from 'react'
-import { supabase } from './lib/supabase'
+import { auth, db } from './lib/firebase'
+import { onAuthStateChanged, signOut } from 'firebase/auth'
+import { doc, getDoc, setDoc, onSnapshot, serverTimestamp } from 'firebase/firestore'
 import Dashboard from './pages/Dashboard'
 import AuthGuard from './components/AuthGuard'
 import { logActivity } from './lib/activityLogger'
@@ -10,76 +12,86 @@ export default function App() {
   const [loading, setLoading] = useState(true)
   const [unauthorized, setUnauthorized] = useState(false)
 
-  // ── SUPABASE AUTHENTICATION & SESSION PERSISTENCE ──
+  // ── FIREBASE AUTHENTICATION & FIRESTORE PROFILE LISTENER ──
   useEffect(() => {
-    let mounted = true
+    let unsubscribeDoc = null
 
-    async function fetchProfile(userId) {
-      let { data, error } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('id', userId)
-        .maybeSingle()
-
-      // ── BOOTSTRAP ADMIN CHECK FOR OWNER EMAIL ──
-      if (data && data.email?.toLowerCase() === 'mubeenahma1123@gmail.com' && data.role !== 'admin') {
-        const { data: updated } = await supabase
-          .from('profiles')
-          .update({ role: 'admin' })
-          .eq('id', userId)
-          .select('*')
-          .single()
-        if (updated) data = updated
-      }
-
-      if (mounted) {
-        if (data && !error && data.role) {
-          setUserProfile(data)
-          setUnauthorized(false)
-        } else {
-          // No profile row exists! Unauthorized email -> immediate sign out & gate workspace
-          setUserProfile(null)
-          setUnauthorized(true)
-          await supabase.auth.signOut()
-        }
-        setLoading(false)
-      }
-    }
-
-    // Check active session on initial load
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session?.user) fetchProfile(session.user.id)
-      else if (mounted) setLoading(false)
-    })
-
-    // Listen for login/logout events
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      if (event === 'SIGNED_OUT' || !session) {
+    const unsubscribeAuth = onAuthStateChanged(auth, async (firebaseUser) => {
+      if (!firebaseUser) {
         setUserProfile(null)
-        if (mounted) setLoading(false)
-      } else if (session?.user) {
-        fetchProfile(session.user.id)
-        if (event === 'SIGNED_IN') {
-          logActivity({
-            action: ACTIONS.USER_LOGGED_IN,
-            entityType: 'profile',
-            entityId: session.user.id
-          })
+        setUnauthorized(false)
+        setLoading(false)
+        if (unsubscribeDoc) unsubscribeDoc()
+        return
+      }
+
+      // Fetch or initialize profile in Firestore collection 'users'
+      const userRef = doc(db, 'users', firebaseUser.uid)
+      
+      try {
+        const userSnap = await getDoc(userRef)
+        let profileData = null
+
+        if (userSnap.exists()) {
+          profileData = { id: userSnap.id, ...userSnap.data() }
+
+          // Admin bootstrap check
+          if (profileData.email?.toLowerCase() === 'mubeenahma1123@gmail.com' && profileData.role !== 'admin') {
+            await setDoc(userRef, { role: 'admin' }, { merge: true })
+            profileData.role = 'admin'
+          }
+        } else {
+          // Initialize default profile for new Firebase Auth user
+          const defaultRole = firebaseUser.email?.toLowerCase() === 'mubeenahma1123@gmail.com' ? 'admin' : 'sales'
+          profileData = {
+            id: firebaseUser.uid,
+            uid: firebaseUser.uid,
+            email: firebaseUser.email || '',
+            displayName: firebaseUser.displayName || firebaseUser.email || 'Team Member',
+            role: defaultRole,
+            photoURL: firebaseUser.photoURL || null,
+            active: true,
+            createdAt: serverTimestamp(),
+            updatedAt: serverTimestamp()
+          }
+          await setDoc(userRef, profileData)
         }
+
+        setUserProfile(profileData)
+        setUnauthorized(false)
+        setLoading(false)
+
+        // Log login activity
+        logActivity({
+          action: ACTIONS.USER_LOGGED_IN,
+          entityType: 'profile',
+          entityId: firebaseUser.uid
+        })
+
+        // Real-time listener for profile updates (e.g. role changes by admin)
+        unsubscribeDoc = onSnapshot(userRef, (snapshot) => {
+          if (snapshot.exists()) {
+            setUserProfile({ id: snapshot.id, ...snapshot.data() })
+          }
+        })
+
+      } catch (err) {
+        console.error('Error hydrating user profile from Firestore:', err)
+        setUserProfile(null)
+        setLoading(false)
       }
     })
 
     return () => {
-      mounted = false
-      subscription.unsubscribe()
+      unsubscribeAuth()
+      if (unsubscribeDoc) unsubscribeDoc()
     }
   }, [])
 
   // ── LOGOUT LOGIC ──
-  // Uses Supabase's native signOut which clears the secure session token
   const handleLogout = async () => {
     setLoading(true)
-    await supabase.auth.signOut()
+    await signOut(auth)
     setUserProfile(null)
     setUnauthorized(false)
     setLoading(false)

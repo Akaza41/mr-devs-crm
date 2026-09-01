@@ -1,25 +1,15 @@
-import { supabase } from './supabase'
+import { db, auth } from './firebase'
+import { collection, addDoc, serverTimestamp } from 'firebase/firestore'
 
 // ── ACTIVITY LOGGER ──
-// Centralized helper that writes activity events via the Supabase `log_activity` RPC.
-//
-// WHY RPC instead of a direct insert:
-//   - The `activity_logs` table has RLS that blocks client-side inserts.
-//   - The RPC runs with SECURITY DEFINER (postgres permissions), bypassing that safely.
-//   - This also means the service role key never has to be exposed to the browser.
-//
-// HOW TO USE:
-//   import { logActivity } from '../lib/activityLogger'
-//   import { ACTIONS } from '../lib/activityActions'
-//
-//   logActivity({ action: ACTIONS.LEAD_CREATED, entityType: 'lead', entityId: lead.id, projectId: activeProject.id })
+// Centralized helper that writes activity events directly to the Cloud Firestore `activity_logs` collection.
 //
 // IMPORTANT: logActivity is fire-and-forget.
 //   It NEVER throws and NEVER blocks the UI.
 //   A failed log write is silently swallowed so the user experience is never affected.
 
 /**
- * Log a business event to the activity_logs table via RPC.
+ * Log a business event to the activity_logs collection in Firestore.
  *
  * @param {object} params
  * @param {string}  params.action      - Action constant from activityActions.js (e.g. ACTIONS.LEAD_CREATED)
@@ -30,21 +20,21 @@ import { supabase } from './supabase'
  */
 export async function logActivity({ action, entityType, entityId = null, projectId = null, metadata = {} }) {
   try {
-    // Delegate the insert entirely to the RPC — session/user_id is resolved server-side via auth.uid()
-    const { error } = await supabase.rpc('log_activity', {
-      p_action:      action,
-      p_entity_type: entityType,
-      p_entity_id:   entityId ? String(entityId) : null,
-      p_project_id:  projectId || null,
-      p_metadata:    metadata,
-    })
+    const currentUser = auth.currentUser
+    const userId = currentUser ? currentUser.uid : null
 
-    if (error) {
-      // Log to console for debugging but never surface to the user
-      console.warn('[activityLogger] Failed to log activity:', error.message, { action, entityType, entityId })
-    }
+    await addDoc(collection(db, 'activity_logs'), {
+      userId,
+      action: action || 'unknown',
+      entityType: entityType || 'system',
+      entityId: entityId ? String(entityId) : null,
+      projectId: projectId || null,
+      metadata: metadata || {},
+      createdAt: serverTimestamp()
+    })
   } catch (err) {
     // Network error or unexpected failure — swallow silently
-    console.warn('[activityLogger] Unexpected error:', err.message)
+    console.warn('[activityLogger] Swallowed error logging activity:', err.message)
   }
 }
+

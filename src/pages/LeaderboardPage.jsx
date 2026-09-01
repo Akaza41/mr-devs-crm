@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo } from 'react'
-import { supabase } from '../lib/supabase'
+import { db } from '../lib/firebase'
+import { collection, getDocs, query } from 'firebase/firestore'
 
 function getAvatarInitial(fullName, email) {
   if (fullName && fullName.trim()) return fullName.trim().charAt(0).toUpperCase()
@@ -15,34 +16,27 @@ export default function LeaderboardPage({ onlineUserIds = new Set(), onBack }) {
   const [loading, setLoading] = useState(true)
 
   const fetchLeaderboard = async () => {
-    const { data, error } = await supabase.rpc('get_team_metrics')
-
-    if (!error && data) {
-      setLeaderboard(data)
-    } else {
-      // Fallback query if RPC returns empty or building
-      const { data: profiles } = await supabase
-        .from('profiles')
-        .select('id, full_name, email, avatar_url, role')
-        .eq('status', 'active')
-
-      if (profiles) {
-        setLeaderboard(profiles.map(p => ({
-          user_id: p.id,
-          full_name: p.full_name,
-          email: p.email,
-          avatar_url: p.avatar_url,
-          role: p.role,
-          leads_assigned: 0,
-          leads_contacted: 0,
-          leads_converted: 0,
-          conversion_rate: 0,
-          avg_research_score: 0,
-          total_actions: 0
-        })))
-      }
+    try {
+      const snapshot = await getDocs(query(collection(db, 'users')))
+      const profiles = snapshot.docs.map(doc => ({
+        user_id: doc.id,
+        full_name: doc.data().displayName || doc.data().email,
+        email: doc.data().email || '',
+        avatar_url: doc.data().photoURL || null,
+        role: doc.data().role || 'sales',
+        leads_assigned: 0,
+        leads_contacted: 0,
+        leads_converted: 0,
+        conversion_rate: 0,
+        avg_research_score: 0,
+        total_actions: 0
+      }))
+      setLeaderboard(profiles)
+    } catch (err) {
+      console.error('Error fetching leaderboard from Firestore:', err)
+    } finally {
+      setLoading(false)
     }
-    setLoading(false)
   }
 
   useEffect(() => {
@@ -219,7 +213,7 @@ export default function LeaderboardPage({ onlineUserIds = new Set(), onBack }) {
                         width: '10px',
                         height: '10px',
                         borderRadius: '50%',
-                        background: (onlineUserIds.has(rep.user_id) || (rep.last_active && (new Date() - new Date(rep.last_active)) < 15 * 60 * 1000)) ? '#3ecf8e' : '#555',
+                        background: ((onlineUserIds?.has ? onlineUserIds.has(rep.user_id) : Array.isArray(onlineUserIds) && onlineUserIds.includes(rep.user_id)) || (rep.last_active && (new Date() - new Date(rep.last_active)) < 15 * 60 * 1000)) ? '#3ecf8e' : '#555',
                         border: '1.5px solid #1c1c20'
                       }}
                     />

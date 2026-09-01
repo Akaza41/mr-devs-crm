@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
-import { supabase } from '../lib/supabase'
+import { db } from '../lib/firebase'
+import { collection, doc, getDocs, setDoc, updateDoc, deleteDoc, query, orderBy } from 'firebase/firestore'
 import { logActivity } from '../lib/activityLogger'
 import { ACTIONS } from '../lib/activityActions'
 
@@ -42,27 +43,42 @@ export default function UsersPage({ currentUserId, onBack }) {
   }
 
   const fetchActiveProfiles = async () => {
-    const { data, error } = await supabase
-      .from('profiles')
-      .select('id, full_name, email, avatar_url, role, status, created_at')
-      .order('created_at', { ascending: true })
-
-    if (!error && data) {
+    try {
+      const snap = await getDocs(query(collection(db, 'users'), orderBy('createdAt', 'asc')))
+      const data = snap.docs.map(d => {
+        const docData = d.data()
+        return {
+          id: d.id,
+          full_name: docData.displayName || docData.email,
+          email: docData.email || '',
+          avatar_url: docData.photoURL || null,
+          role: docData.role || 'sales',
+          status: docData.active ? 'active' : 'suspended',
+          created_at: docData.createdAt ? new Date(docData.createdAt.seconds * 1000).toISOString() : new Date().toISOString()
+        }
+      })
       setProfiles(data)
+    } catch (err) {
+      console.error('Error fetching users from Firestore:', err)
+    } finally {
+      setLoadingProfiles(false)
     }
-    setLoadingProfiles(false)
   }
 
   const fetchPendingInvites = async () => {
-    const { data, error } = await supabase
-      .from('pending_invites')
-      .select('*')
-      .order('created_at', { ascending: false })
-
-    if (!error && data) {
+    try {
+      const snap = await getDocs(collection(db, 'pending_invites'))
+      const data = snap.docs.map(d => ({
+        id: d.id,
+        email: d.id,
+        ...d.data()
+      }))
       setInvites(data)
+    } catch (err) {
+      console.error('Error fetching pending invites from Firestore:', err)
+    } finally {
+      setLoadingInvites(false)
     }
-    setLoadingInvites(false)
   }
 
   useEffect(() => {
@@ -74,12 +90,8 @@ export default function UsersPage({ currentUserId, onBack }) {
     const target = profiles.find(p => p.id === userId)
     const oldRole = target?.role
 
-    const { error } = await supabase
-      .from('profiles')
-      .update({ role: newRole })
-      .eq('id', userId)
-
-    if (!error) {
+    try {
+      await updateDoc(doc(db, 'users', userId), { role: newRole })
       setProfiles(profiles.map(p => p.id === userId ? { ...p, role: newRole } : p))
       showToast(`Updated ${userEmail || 'user'} role to ${newRole}`)
       logActivity({
@@ -88,7 +100,7 @@ export default function UsersPage({ currentUserId, onBack }) {
         entityId: userId,
         metadata: { target_email: userEmail, old_role: oldRole, new_role: newRole }
       })
-    } else {
+    } catch (error) {
       showToast('Error updating role: ' + error.message)
     }
   }
@@ -96,12 +108,8 @@ export default function UsersPage({ currentUserId, onBack }) {
   const handleStatusToggle = async (userId, userEmail, currentStatus) => {
     const newStatus = currentStatus === 'suspended' ? 'active' : 'suspended'
 
-    const { error } = await supabase
-      .from('profiles')
-      .update({ status: newStatus })
-      .eq('id', userId)
-
-    if (!error) {
+    try {
+      await updateDoc(doc(db, 'users', userId), { active: newStatus === 'active' })
       setProfiles(profiles.map(p => p.id === userId ? { ...p, status: newStatus } : p))
       showToast(newStatus === 'suspended' ? `Suspended ${userEmail}` : `Reactivated ${userEmail}`)
       logActivity({
@@ -110,7 +118,7 @@ export default function UsersPage({ currentUserId, onBack }) {
         entityId: userId,
         metadata: { target_email: userEmail, old_status: currentStatus, new_status: newStatus }
       })
-    } else {
+    } catch (error) {
       showToast('Error updating status: ' + error.message)
     }
   }
@@ -118,12 +126,8 @@ export default function UsersPage({ currentUserId, onBack }) {
   const handleRevokeInvite = async (inviteEmail) => {
     if (!window.confirm(`Revoke pending invite for ${inviteEmail}?`)) return
 
-    const { error } = await supabase
-      .from('pending_invites')
-      .delete()
-      .eq('email', inviteEmail)
-
-    if (!error) {
+    try {
+      await deleteDoc(doc(db, 'pending_invites', inviteEmail))
       setInvites(invites.filter(i => i.email !== inviteEmail))
       showToast(`Revoked pending invite for ${inviteEmail}`)
       logActivity({
@@ -131,7 +135,7 @@ export default function UsersPage({ currentUserId, onBack }) {
         entityType: 'pending_invite',
         metadata: { email: inviteEmail }
       })
-    } else {
+    } catch (error) {
       showToast('Error revoking invite: ' + error.message)
     }
   }
@@ -146,17 +150,14 @@ export default function UsersPage({ currentUserId, onBack }) {
     setSubmittingInvite(true)
 
     try {
-      const { error: dbError } = await supabase
-        .from('pending_invites')
-        .upsert({
-          email: cleanEmail,
-          role: inviteRole,
-          title: inviteTitle.trim() || null,
-          specialties: specsArray,
-          invited_by: currentUserId || null
-        })
-
-      if (dbError) throw new Error(dbError.message)
+      await setDoc(doc(db, 'pending_invites', cleanEmail), {
+        email: cleanEmail,
+        role: inviteRole,
+        title: inviteTitle.trim() || null,
+        specialties: specsArray,
+        invited_by: currentUserId || null,
+        created_at: new Date().toISOString()
+      }, { merge: true })
 
       showToast(`Invite created for ${cleanEmail}`)
       setInviteEmail('')

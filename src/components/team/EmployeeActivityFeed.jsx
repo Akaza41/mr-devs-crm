@@ -1,15 +1,13 @@
 import React, { useState, useEffect } from 'react'
-import { supabase } from '../../lib/supabase'
+import { db } from '../../lib/firebase'
+import { collection, query, where, orderBy, limit, getDocs } from 'firebase/firestore'
 import { formatActivityDetails } from '../../lib/activityFormatter'
 
 // ── EMPLOYEE ACTIVITY FEED ──
-// Renders a timeline of the user's actions by fetching from activity_logs.
-// Uses cursor-based pagination (by created_at) to scale efficiently.
+// Renders a timeline of the user's actions by fetching from activity_logs in Firestore.
 export default function EmployeeActivityFeed({ userId }) {
   const [logs, setLogs] = useState([])
   const [loading, setLoading] = useState(true)
-  const [loadingMore, setLoadingMore] = useState(false)
-  const [hasMore, setHasMore] = useState(false)
   const [error, setError] = useState(null)
 
   const BATCH_SIZE = 20
@@ -24,49 +22,54 @@ export default function EmployeeActivityFeed({ userId }) {
     setLoading(true)
     setError(null)
 
-    const { data, error: fetchError } = await supabase
-      .from('activity_logs')
-      .select('id, created_at, action, entity_type, entity_id, metadata')
-      .eq('user_id', userId)
-      .order('created_at', { ascending: false })
-      .limit(BATCH_SIZE)
-
-    if (fetchError) {
-      setError('Failed to load activity logs.')
-      console.error('[EmployeeActivityFeed]', fetchError)
-    } else {
-      setLogs(data || [])
-      setHasMore((data || []).length === BATCH_SIZE)
+    try {
+      const qLogs = query(
+        collection(db, 'activity_logs'),
+        where('userId', '==', userId),
+        orderBy('createdAt', 'desc'),
+        limit(BATCH_SIZE)
+      )
+      const snapshot = await getDocs(qLogs)
+      const data = snapshot.docs.map(doc => {
+        const d = doc.data()
+        return {
+          id: doc.id,
+          created_at: d.createdAt ? new Date(d.createdAt.seconds * 1000).toISOString() : new Date().toISOString(),
+          action: d.action || 'unknown',
+          entity_type: d.entityType || 'system',
+          entity_id: d.entityId || null,
+          metadata: d.metadata || {}
+        }
+      })
+      setLogs(data)
+    } catch (fetchError) {
+      console.warn('[EmployeeActivityFeed] Firestore query fallback (without index):', fetchError.message)
+      // Fallback query without orderBy if index is still building
+      try {
+        const qFallback = query(
+          collection(db, 'activity_logs'),
+          where('userId', '==', userId),
+          limit(BATCH_SIZE)
+        )
+        const snapshot = await getDocs(qFallback)
+        const data = snapshot.docs.map(doc => {
+          const d = doc.data()
+          return {
+            id: doc.id,
+            created_at: d.createdAt ? new Date(d.createdAt.seconds * 1000).toISOString() : new Date().toISOString(),
+            action: d.action || 'unknown',
+            entity_type: d.entityType || 'system',
+            entity_id: d.entityId || null,
+            metadata: d.metadata || {}
+          }
+        })
+        setLogs(data)
+      } catch (err) {
+        setError('Failed to load activity logs.')
+      }
+    } finally {
+      setLoading(false)
     }
-    
-    setLoading(false)
-  }
-
-  const loadMore = async () => {
-    if (!hasMore || logs.length === 0 || loadingMore) return
-
-    setLoadingMore(true)
-    // Use the created_at of the oldest loaded log as the cursor
-    const lastCursor = logs[logs.length - 1].created_at
-
-    const { data, error: fetchError } = await supabase
-      .from('activity_logs')
-      .select('id, created_at, action, entity_type, entity_id, metadata')
-      .eq('user_id', userId)
-      .lt('created_at', lastCursor)
-      .order('created_at', { ascending: false })
-      .limit(BATCH_SIZE)
-
-    if (fetchError) {
-      console.error('[EmployeeActivityFeed] Load more error:', fetchError)
-      // Optionally show a toast here instead of breaking the UI
-    } else {
-      const newLogs = data || []
-      setLogs(prev => [...prev, ...newLogs])
-      setHasMore(newLogs.length === BATCH_SIZE)
-    }
-
-    setLoadingMore(false)
   }
 
   // Format a timestamp nicely (e.g. "Today at 2:30 PM", or full date)
@@ -133,19 +136,6 @@ export default function EmployeeActivityFeed({ userId }) {
               </div>
             )
           })}
-        </div>
-      )}
-
-      {hasMore && (
-        <div style={{ marginTop: '20px', display: 'flex', justifyContent: 'center' }}>
-          <button 
-            className="btn-ghost" 
-            onClick={loadMore} 
-            disabled={loadingMore}
-            style={{ fontSize: '12px', padding: '6px 12px' }}
-          >
-            {loadingMore ? 'Loading...' : 'Load More'}
-          </button>
         </div>
       )}
       

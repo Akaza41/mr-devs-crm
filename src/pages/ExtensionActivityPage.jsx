@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo } from 'react'
-import { supabase } from '../lib/supabase'
+import { db } from '../lib/firebase'
+import { collection, getDocs, query } from 'firebase/firestore'
 
 export default function ExtensionActivityPage({ onBack }) {
   const [loading, setLoading] = useState(true)
@@ -12,28 +13,32 @@ export default function ExtensionActivityPage({ onBack }) {
   const fetchAccountabilityData = async () => {
     try {
       // 1. Fetch team profiles
-      const { data: profs } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('status', 'active')
+      const profSnap = await getDocs(collection(db, 'users'))
+      const profs = profSnap.docs.map(d => ({ id: d.id, ...d.data(), full_name: d.data().displayName || d.data().email }))
 
       // 2. Fetch outreach events from extension
-      const { data: events } = await supabase
-        .from('outreach_events')
-        .select('*')
-        .order('created_at', { ascending: false })
+      let events = []
+      try {
+        const evSnap = await getDocs(collection(db, 'outreach_events'))
+        events = evSnap.docs.map(d => ({ id: d.id, ...d.data() }))
+      } catch (e) {
+        console.warn('outreach_events collection query:', e.message)
+      }
 
       // 3. Fetch manual outreach touches
-      const { data: touches } = await supabase
-        .from('outreach_touches')
-        .select('*')
-        .order('created_at', { ascending: false })
+      let touches = []
+      try {
+        const touchSnap = await getDocs(collection(db, 'outreach_touches'))
+        touches = touchSnap.docs.map(d => ({ id: d.id, ...d.data() }))
+      } catch (e) {
+        console.warn('outreach_touches collection query:', e.message)
+      }
 
       setProfiles(profs || [])
       setOutreachEvents(events || [])
       setManualTouches(touches || [])
     } catch (err) {
-      console.error('Error fetching extension activity data:', err)
+      console.error('Error fetching extension activity data from Firestore:', err)
     } finally {
       setLoading(false)
     }

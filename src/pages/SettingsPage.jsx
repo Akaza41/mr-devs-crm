@@ -1,5 +1,7 @@
 import { useState, useEffect } from 'react'
-import { supabase } from '../lib/supabase'
+import { db, auth } from '../lib/firebase'
+import { updatePassword } from 'firebase/auth'
+import { doc, getDoc, setDoc, updateDoc } from 'firebase/firestore'
 import { logActivity } from '../lib/activityLogger'
 import { ACTIONS } from '../lib/activityActions'
 
@@ -9,12 +11,12 @@ export default function SettingsPage({ userProfile, onBack }) {
   const [cadenceLoading, setCadenceLoading] = useState(false)
   const [toast, setToast] = useState('')
   const [password, setPassword] = useState('')
-  const [fullName, setFullName] = useState(userProfile?.full_name || '')
+  const [fullName, setFullName] = useState(userProfile?.full_name || userProfile?.displayName || '')
   const [title, setTitle] = useState(userProfile?.title || '')
   const [phone, setPhone] = useState(userProfile?.phone || '')
   const [bio, setBio] = useState(userProfile?.bio || '')
   const [specialtiesInput, setSpecialtiesInput] = useState(Array.isArray(userProfile?.specialties) ? userProfile.specialties.join(', ') : '')
-  const [avatarUrl, setAvatarUrl] = useState(userProfile?.avatar_url || '')
+  const [avatarUrl, setAvatarUrl] = useState(userProfile?.avatar_url || userProfile?.photoURL || '')
 
   // Cadence Settings State
   const [noAnswerDays, setNoAnswerDays] = useState(2)
@@ -23,13 +25,9 @@ export default function SettingsPage({ userProfile, onBack }) {
 
   const fetchCadenceSettings = async () => {
     try {
-      const { data, error } = await supabase
-        .from('cadence_settings')
-        .select('*')
-        .eq('id', 1)
-        .maybeSingle()
-
-      if (!error && data) {
+      const snap = await getDoc(doc(db, 'settings', 'cadence'))
+      if (snap.exists()) {
+        const data = snap.data()
         setNoAnswerDays(data.no_answer_days ?? 2)
         setVoicemailDays(data.voicemail_days ?? 2)
         setAnsweredDays(data.answered_days ?? 4)
@@ -50,26 +48,21 @@ export default function SettingsPage({ userProfile, onBack }) {
 
   const handleProfileUpdate = async (e) => {
     e.preventDefault()
-    if (!userProfile) return
+    if (!userProfile?.id) return
     setProfileLoading(true)
 
     const specsArray = specialtiesInput ? specialtiesInput.split(',').map(s => s.trim()).filter(Boolean) : []
 
-    const { error } = await supabase
-      .from('profiles')
-      .update({
-        full_name: fullName,
+    try {
+      await updateDoc(doc(db, 'users', userProfile.id), {
+        displayName: fullName,
         title,
         phone,
         bio,
         specialties: specsArray,
-        avatar_url: avatarUrl
+        photoURL: avatarUrl,
+        updatedAt: new Date()
       })
-      .eq('id', userProfile.id)
-
-    if (error) {
-      showToast('Error updating profile: ' + error.message)
-    } else {
       showToast('Profile updated successfully')
       logActivity({
         action: ACTIONS.PROFILE_UPDATED,
@@ -77,6 +70,8 @@ export default function SettingsPage({ userProfile, onBack }) {
         entityId: userProfile.id,
         metadata: { full_name: fullName, title, avatar_url: avatarUrl }
       })
+    } catch (error) {
+      showToast('Error updating profile: ' + error.message)
     }
     setProfileLoading(false)
   }
@@ -85,18 +80,22 @@ export default function SettingsPage({ userProfile, onBack }) {
     e.preventDefault()
     if (!password) return
     setLoading(true)
-    const { error } = await supabase.auth.updateUser({ password })
-    if (error) {
-      showToast('Error: ' + error.message)
-    } else {
-      showToast('Password updated successfully')
-      setPassword('')
-      logActivity({
-        action: ACTIONS.PROFILE_UPDATED,
-        entityType: 'profile',
-        entityId: userProfile.id,
-        metadata: { detail: 'Changed password' }
-      })
+    try {
+      if (auth.currentUser) {
+        await updatePassword(auth.currentUser, password)
+        showToast('Password updated successfully')
+        setPassword('')
+        logActivity({
+          action: ACTIONS.PROFILE_UPDATED,
+          entityType: 'profile',
+          entityId: userProfile.id,
+          metadata: { detail: 'Changed password' }
+        })
+      } else {
+        showToast('No authenticated user found.')
+      }
+    } catch (error) {
+      showToast('Error updating password: ' + error.message)
     }
     setLoading(false)
   }
@@ -106,27 +105,23 @@ export default function SettingsPage({ userProfile, onBack }) {
     setCadenceLoading(true)
 
     const payload = {
-      id: 1,
       no_answer_days: parseInt(noAnswerDays, 10) || 2,
       voicemail_days: parseInt(voicemailDays, 10) || 2,
       answered_days: parseInt(answeredDays, 10) || 4,
-      updated_at: new Date().toISOString()
+      updatedAt: new Date()
     }
 
-    const { error } = await supabase
-      .from('cadence_settings')
-      .upsert(payload)
-
-    if (error) {
-      showToast('Error saving cadence settings: ' + error.message)
-    } else {
-      showToast('Follow-up cadence rules saved')
+    try {
+      await setDoc(doc(db, 'settings', 'cadence'), payload, { merge: true })
+      showToast('Cadence settings updated successfully')
       logActivity({
-        action: ACTIONS.SETTINGS_UPDATED || 'settings.updated',
+        action: ACTIONS.PROFILE_UPDATED,
         entityType: 'settings',
         entityId: 'cadence',
-        metadata: { no_answer_days: noAnswerDays, voicemail_days: voicemailDays, answered_days: answeredDays }
+        metadata: payload
       })
+    } catch (error) {
+      showToast('Error saving cadence settings: ' + error.message)
     }
     setCadenceLoading(false)
   }

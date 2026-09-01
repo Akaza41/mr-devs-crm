@@ -1,38 +1,30 @@
-// MR.DEVS CRM Extension Service Worker (background.js)
+// MR.DEVS CRM Chrome Extension Service Worker (background.js)
+// Updated for Firebase Auth REST & Cloud Firestore REST APIs
 
-const DEFAULT_SUPABASE_URL = ''
-const DEFAULT_ANON_KEY = ''
+const DEFAULT_FIREBASE_API_KEY = ''
+const DEFAULT_PROJECT_ID = 'mr-devs-platform'
 
-// Helper to get configuration and session
 async function getExtensionConfig() {
-  const data = await chrome.storage.local.get(['supabaseUrl', 'supabaseAnonKey', 'session', 'user'])
+  const data = await chrome.storage.local.get(['firebaseApiKey', 'projectId', 'session', 'user'])
   return {
-    supabaseUrl: data.supabaseUrl || DEFAULT_SUPABASE_URL,
-    supabaseAnonKey: data.supabaseAnonKey || DEFAULT_ANON_KEY,
+    firebaseApiKey: data.firebaseApiKey || DEFAULT_FIREBASE_API_KEY,
+    projectId: data.projectId || DEFAULT_PROJECT_ID,
     session: data.session || null,
     user: data.user || null
   }
 }
 
-// Listen for message events from popup or content scripts
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.action === 'SAVE_CONFIG') {
     chrome.storage.local.set({
-      supabaseUrl: message.supabaseUrl,
-      supabaseAnonKey: message.supabaseAnonKey
+      firebaseApiKey: message.firebaseApiKey,
+      projectId: message.projectId
     }, () => sendResponse({ success: true }))
     return true
   }
 
   if (message.action === 'LOGIN') {
-    handleLogin(message.email, message.password, message.supabaseUrl, message.supabaseAnonKey)
-      .then(res => sendResponse(res))
-      .catch(err => sendResponse({ success: false, error: err.message }))
-    return true // async response
-  }
-
-  if (message.action === 'GOOGLE_LOGIN') {
-    handleGoogleLogin(message.supabaseUrl, message.supabaseAnonKey)
+    handleFirebaseLogin(message.email, message.password, message.firebaseApiKey, message.projectId)
       .then(res => sendResponse(res))
       .catch(err => sendResponse({ success: false, error: err.message }))
     return true
@@ -56,41 +48,43 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
 })
 
-// Handles Supabase email/password login via REST Auth API
-async function handleLogin(email, password, customUrl, customKey) {
+// Handles Firebase email/password login via Google Identity Toolkit REST API
+async function handleFirebaseLogin(email, password, customKey, customProjectId) {
   const config = await getExtensionConfig()
-  const url = (customUrl || config.supabaseUrl || '').replace(/\/$/, '')
-  const key = customKey || config.supabaseAnonKey || ''
+  const apiKey = customKey || config.firebaseApiKey
+  const projectId = customProjectId || config.projectId
 
-  if (!url || url.includes('YOUR_SUPABASE_PROJECT')) {
-    throw new Error('Supabase URL not configured. Expand "Supabase Endpoint Config" below to set it.')
+  if (!apiKey) {
+    throw new Error('Firebase API Key not configured in Extension settings.')
   }
 
-  const response = await fetch(`${url}/auth/v1/token?grant_type=password`, {
+  const endpoint = `https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=${apiKey}`
+  const response = await fetch(endpoint, {
     method: 'POST',
-    headers: {
-      'apikey': key,
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify({ email, password })
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email, password, returnSecureToken: true })
   })
 
   const data = await response.json()
   if (!response.ok) {
-    throw new Error(data.error_description || data.msg || data.message || 'Login failed')
+    throw new Error(data.error?.message || 'Login failed')
   }
 
   const session = {
-    access_token: data.access_token,
-    refresh_token: data.refresh_token,
-    expires_at: Date.now() + (data.expires_in * 1000)
+    idToken: data.idToken,
+    refreshToken: data.refreshToken,
+    expiresAt: Date.now() + (parseInt(data.expiresIn) * 1000)
   }
 
-  const user = data.user
+  const user = {
+    uid: data.localId,
+    email: data.email,
+    displayName: data.displayName || data.email
+  }
 
   await chrome.storage.local.set({
-    supabaseUrl: url,
-    supabaseAnonKey: key,
+    firebaseApiKey: apiKey,
+    projectId,
     session,
     user
   })
@@ -98,156 +92,46 @@ async function handleLogin(email, password, customUrl, customKey) {
   return { success: true, user }
 }
 
-// Handles Google OAuth sign-in via chrome.identity & Supabase OAuth
-async function handleGoogleLogin(customUrl, customKey) {
-  const config = await getExtensionConfig()
-  const url = (customUrl || config.supabaseUrl || '').replace(/\/$/, '')
-  const key = customKey || config.supabaseAnonKey || ''
-
-  if (!url || url.includes('YOUR_SUPABASE_PROJECT')) {
-    throw new Error('Supabase URL not configured. Please expand "Supabase Endpoint Config" below to set your project URL.')
-  }
-
-  // Use chrome.identity to get redirect URI (e.g. https://<ext-id>.chromiumapp.org/)
-  const redirectUrl = chrome.identity.getRedirectURL()
-  const authUrl = `${url}/auth/v1/authorize?provider=google&redirect_to=${encodeURIComponent(redirectUrl)}`
-
-  return new Promise((resolve, reject) => {
-    chrome.identity.launchWebAuthFlow({
-      url: authUrl,
-      interactive: true
-    }, async (redirectedTo) => {
-      if (chrome.runtime.lastError) {
-        return reject(new Error(chrome.runtime.lastError.message || 'Google Auth cancelled'))
-      }
-      if (!redirectedTo) {
-        return reject(new Error('Google Auth window closed before completion'))
-      }
-
-      try {
-        const urlObj = new URL(redirectedTo)
-        const hash = urlObj.hash.startsWith('#') ? urlObj.hash.substring(1) : urlObj.hash
-        const params = new URLSearchParams(hash || urlObj.search)
-
-        const accessToken = params.get('access_token')
-        const refreshToken = params.get('refresh_token')
-        const expiresIn = params.get('expires_in')
-
-        if (!accessToken) {
-          throw new Error('No access_token returned from Google OAuth redirect')
-        }
-
-        // Fetch user profile from Supabase with the token
-        const userRes = await fetch(`${url}/auth/v1/user`, {
-          headers: {
-            'apikey': key,
-            'Authorization': `Bearer ${accessToken}`
-          }
-        })
-
-        if (!userRes.ok) {
-          throw new Error('Failed to fetch user profile with Google OAuth token')
-        }
-
-        const user = await userRes.json()
-
-        const session = {
-          access_token: accessToken,
-          refresh_token: refreshToken || '',
-          expires_at: Date.now() + (parseInt(expiresIn || '3600', 10) * 1000)
-        }
-
-        await chrome.storage.local.set({
-          supabaseUrl: url,
-          supabaseAnonKey: key,
-          session,
-          user
-        })
-
-        resolve({ success: true, user })
-      } catch (err) {
-        reject(err)
-      }
-    })
-  })
-}
-
-// Matches recipient email and logs event to outreach_events table
+// Logs Gmail outreach event to Cloud Firestore via REST API
 async function handleLogGmailOutreach(recipientEmail, subject) {
-  const { supabaseUrl, supabaseAnonKey, session, user } = await getExtensionConfig()
-
-  if (!session || !session.access_token || !user) {
-    throw new Error('Rep not authenticated in extension')
+  const config = await getExtensionConfig()
+  if (!config.session || !config.user) {
+    throw new Error('Not logged in')
   }
 
-  const cleanRecipient = (recipientEmail || '').trim().toLowerCase()
-  const headers = {
-    'apikey': supabaseAnonKey,
-    'Authorization': `Bearer ${session.access_token}`,
-    'Content-Type': 'application/json',
-    'Prefer': 'return=representation'
-  }
+  const projectId = config.projectId || DEFAULT_PROJECT_ID
+  const endpoint = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/outreach_events`
 
-  // Step 1: Match recipient against leads table by notes, custom_fields, or contact info
-  let leadId = null
-  let matchedLeadName = null
-
-  try {
-    const matchRes = await fetch(`${supabaseUrl}/rest/v1/leads?select=id,hospital_name,lead_name,notes,custom_fields&limit=5`, {
-      method: 'GET',
-      headers
-    })
-
-    if (matchRes.ok) {
-      const leads = await matchRes.json()
-      // Find matching lead containing recipient email in notes or custom fields
-      const match = leads.find(l => {
-        const notesStr = (l.notes || '').toLowerCase()
-        const customStr = JSON.stringify(l.custom_fields || {}).toLowerCase()
-        return notesStr.includes(cleanRecipient) || customStr.includes(cleanRecipient)
-      })
-
-      if (match) {
-        leadId = match.id
-        matchedLeadName = match.hospital_name || match.lead_name
-      }
-    }
-  } catch (err) {
-    console.warn('Lead match error:', err)
-  }
-
-  // Step 2: POST to outreach_events table
   const payload = {
-    user_id: user.id,
-    lead_id: leadId,
-    channel: 'gmail',
-    event_type: 'message_sent',
-    payload: {
-      recipient_email: cleanRecipient,
-      subject_line: subject || '(No Subject)',
-      unmatched: !leadId,
-      auto_detected: true
-    },
-    created_at: new Date().toISOString()
+    fields: {
+      userId: { stringValue: config.user.uid },
+      channel: { stringValue: 'gmail' },
+      eventType: { stringValue: 'message_sent' },
+      payload: {
+        mapValue: {
+          fields: {
+            recipientEmail: { stringValue: recipientEmail || '' },
+            subject: { stringValue: subject || '' }
+          }
+        }
+      },
+      createdAt: { timestampValue: new Date().toISOString() }
+    }
   }
 
-  const postRes = await fetch(`${supabaseUrl}/rest/v1/outreach_events`, {
+  const response = await fetch(endpoint, {
     method: 'POST',
-    headers,
+    headers: {
+      'Authorization': `Bearer ${config.session.idToken}`,
+      'Content-Type': 'application/json'
+    },
     body: JSON.stringify(payload)
   })
 
-  if (!postRes.ok) {
-    const errText = await postRes.text()
-    throw new Error(`Failed to log outreach event: ${errText}`)
+  if (!response.ok) {
+    const errData = await response.json()
+    throw new Error(errData.error?.message || 'Failed to log outreach event to Firestore')
   }
 
-  const inserted = await postRes.json()
-  return {
-    success: true,
-    matched: !!leadId,
-    leadId,
-    matchedLeadName,
-    event: inserted[0]
-  }
+  return { success: true }
 }

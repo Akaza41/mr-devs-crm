@@ -1,5 +1,4 @@
 import { useState, useEffect, useRef } from 'react'
-import { supabase } from '../lib/supabase'
 
 const FIELDS = [
   { key: 'hospital_name', label: 'Lead / Business Name', type: 'text', full: true },

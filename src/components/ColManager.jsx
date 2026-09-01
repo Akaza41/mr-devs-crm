@@ -1,5 +1,15 @@
 import { useState, useEffect } from 'react'
-import { supabase } from '../lib/supabase'
+import { db } from '../lib/firebase'
+import {
+  collection,
+  doc,
+  getDocs,
+  addDoc,
+  deleteDoc,
+  query,
+  orderBy,
+  serverTimestamp
+} from 'firebase/firestore'
 
 export default function ColManager({ onClose, onCustomColumnsChange }) {
   const [columns, setColumns] = useState([])
@@ -9,12 +19,17 @@ export default function ColManager({ onClose, onCustomColumnsChange }) {
   const [errorMsg, setErrorMsg] = useState('')
 
   async function fetchColumns() {
-    const { data } = await supabase.from('custom_columns').select('*').order('created_at', { ascending: true })
-    if (data) setColumns(data)
+    try {
+      const qCols = query(collection(db, 'custom_columns'), orderBy('createdAt', 'asc'))
+      const snap = await getDocs(qCols)
+      const list = snap.docs.map(d => ({ id: d.id, ...d.data() }))
+      setColumns(list)
+    } catch (err) {
+      console.error('Error fetching custom columns:', err)
+    }
   }
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     fetchColumns()
   }, [])
 
@@ -22,62 +37,51 @@ export default function ColManager({ onClose, onCustomColumnsChange }) {
     setErrorMsg('')
     if (!newColName.trim()) return
     const key = newColName.toLowerCase().replace(/[^a-z0-9]/g, '_')
-    if (columns.find(c => c.column_name === key)) {
+    if (columns.find(c => c.columnName === key || c.column_name === key)) {
       setErrorMsg('Column already exists')
       return
     }
     
     setLoading(true)
-    
-    const { error: rpcError } = await supabase.rpc('add_custom_column', {
-      col_name: key,
-      col_type: newColType === 'Number' ? 'numeric' : newColType === 'Date' ? 'date' : 'text'
-    })
-    
-    if (rpcError) {
-      setErrorMsg('Error adding column: ' + rpcError.message)
-      setLoading(false)
-      return
-    }
-
-    const newCol = {
-      column_name: key,
-      display_name: newColName.trim(),
-      data_type: newColType
-    }
-    
-    const { data, error } = await supabase.from('custom_columns').insert([newCol]).select().single()
-    if (!error && data) {
-      const updated = [...columns, data]
+    try {
+      const newColData = {
+        columnName: key,
+        column_name: key,
+        displayName: newColName.trim(),
+        display_name: newColName.trim(),
+        dataType: newColType,
+        data_type: newColType,
+        createdAt: serverTimestamp()
+      }
+      
+      const docRef = await addDoc(collection(db, 'custom_columns'), newColData)
+      const addedDoc = { id: docRef.id, ...newColData }
+      const updated = [...columns, addedDoc]
       setColumns(updated)
       setNewColName('')
       setNewColType('Text')
       if (onCustomColumnsChange) onCustomColumnsChange(updated)
+    } catch (err) {
+      setErrorMsg('Error adding column: ' + err.message)
+    } finally {
+      setLoading(false)
     }
-    setLoading(false)
   }
 
   const handleDelete = async (col) => {
-    if (!window.confirm(`Delete column "${col.display_name}"? This will drop the data for this column!`)) return
+    if (!window.confirm(`Delete column "${col.displayName || col.display_name}"?`)) return
     setLoading(true)
     
-    const { error: rpcError } = await supabase.rpc('delete_custom_column', {
-      col_name: col.column_name
-    })
-
-    if (rpcError) {
-      setErrorMsg('Error deleting column: ' + rpcError.message)
-      setLoading(false)
-      return
-    }
-
-    const { error } = await supabase.from('custom_columns').delete().eq('id', col.id)
-    if (!error) {
+    try {
+      await deleteDoc(doc(db, 'custom_columns', String(col.id)))
       const updated = columns.filter(c => c.id !== col.id)
       setColumns(updated)
       if (onCustomColumnsChange) onCustomColumnsChange(updated)
+    } catch (err) {
+      setErrorMsg('Error deleting column: ' + err.message)
+    } finally {
+      setLoading(false)
     }
-    setLoading(false)
   }
 
   return (
@@ -105,8 +109,8 @@ export default function ColManager({ onClose, onCustomColumnsChange }) {
                 {columns.map(c => (
                   <div key={c.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#242424', padding: '8px 12px', borderRadius: '6px', border: '0.5px solid #2a2a2a' }}>
                     <div>
-                      <span style={{ fontSize: '13px', color: '#ededed' }}>{c.display_name}</span>
-                      <span style={{ fontSize: '11px', color: '#555', marginLeft: '8px' }}>({c.data_type})</span>
+                      <span style={{ fontSize: '13px', color: '#ededed' }}>{c.displayName || c.display_name}</span>
+                      <span style={{ fontSize: '11px', color: '#555', marginLeft: '8px' }}>({c.dataType || c.data_type})</span>
                     </div>
                     <button onClick={() => handleDelete(c)} disabled={loading} style={{ background: 'none', border: 'none', color: '#f87171', cursor: 'pointer', fontSize: '12px' }}>Delete</button>
                   </div>

@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react'
-import { supabase } from '../../lib/supabase'
+import { db } from '../../lib/firebase'
+import { collection, doc, setDoc, updateDoc, deleteDoc, getDocs } from 'firebase/firestore'
 import { RoleBadge } from './EmployeeCard'
 import { logActivity } from '../../lib/activityLogger'
 import { ACTIONS } from '../../lib/activityActions'
@@ -40,15 +41,19 @@ export default function AddUserScreen({ currentUserId, onBack }) {
 
   const fetchPendingInvites = async () => {
     setFetching(true)
-    const { data, error } = await supabase
-      .from('pending_invites')
-      .select('*')
-      .order('created_at', { ascending: false })
-
-    if (!error && data) {
+    try {
+      const snap = await getDocs(collection(db, 'pending_invites'))
+      const data = snap.docs.map(d => ({
+        id: d.id,
+        email: d.id,
+        ...d.data()
+      }))
       setInvites(data)
+    } catch (err) {
+      console.error('Error fetching pending invites:', err)
+    } finally {
+      setFetching(false)
     }
-    setFetching(false)
   }
 
   const handleAddInvite = async (e) => {
@@ -62,17 +67,14 @@ export default function AddUserScreen({ currentUserId, onBack }) {
     setLoading(true)
 
     try {
-      const { error: dbError } = await supabase
-        .from('pending_invites')
-        .upsert({
-          email: cleanEmail,
-          role,
-          title: title.trim() || null,
-          specialties: specsArray,
-          invited_by: currentUserId || null
-        })
-
-      if (dbError) throw new Error(dbError.message)
+      await setDoc(doc(db, 'pending_invites', cleanEmail), {
+        email: cleanEmail,
+        role,
+        title: title.trim() || null,
+        specialties: specsArray,
+        invited_by: currentUserId || null,
+        created_at: new Date().toISOString()
+      }, { merge: true })
 
       setSuccess(`Invite added for ${cleanEmail} — they can now sign in with Google.`)
       setEmail('')
@@ -97,12 +99,8 @@ export default function AddUserScreen({ currentUserId, onBack }) {
     const invite = invites.find(i => i.email === inviteEmail)
     const oldRole = invite?.role
 
-    const { error } = await supabase
-      .from('pending_invites')
-      .update({ role: newRole })
-      .eq('email', inviteEmail)
-
-    if (!error) {
+    try {
+      await updateDoc(doc(db, 'pending_invites', inviteEmail), { role: newRole })
       setInvites(invites.map(i => i.email === inviteEmail ? { ...i, role: newRole } : i))
       showToast(`Updated invite role to ${newRole}`)
       logActivity({
@@ -110,20 +108,16 @@ export default function AddUserScreen({ currentUserId, onBack }) {
         entityType: 'pending_invite',
         metadata: { email: inviteEmail, old_role: oldRole, new_role: newRole }
       })
-    } else {
-      showToast('Failed to update invite role: ' + error.message)
+    } catch (err) {
+      showToast('Failed to update invite role: ' + err.message)
     }
   }
 
   const handleRevoke = async (inviteEmail) => {
     if (!window.confirm(`Revoke pending invite for ${inviteEmail}?`)) return
 
-    const { error } = await supabase
-      .from('pending_invites')
-      .delete()
-      .eq('email', inviteEmail)
-
-    if (!error) {
+    try {
+      await deleteDoc(doc(db, 'pending_invites', inviteEmail))
       setInvites(invites.filter(i => i.email !== inviteEmail))
       showToast(`Revoked invite for ${inviteEmail}`)
       logActivity({
@@ -131,8 +125,8 @@ export default function AddUserScreen({ currentUserId, onBack }) {
         entityType: 'pending_invite',
         metadata: { email: inviteEmail }
       })
-    } else {
-      showToast(`Failed to revoke invite: ${error.message}`)
+    } catch (err) {
+      showToast(`Failed to revoke invite: ${err.message}`)
     }
   }
 

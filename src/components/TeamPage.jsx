@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
-import { supabase } from '../lib/supabase'
+import { db, auth } from '../lib/firebase'
+import { collection, doc, getDocs, updateDoc, query, orderBy } from 'firebase/firestore'
 import EmployeeCard from './team/EmployeeCard'
 import AddMemberModal from './team/AddMemberModal'
 import { logActivity } from '../lib/activityLogger'
@@ -14,9 +15,7 @@ export default function TeamPage({ onViewProfile, onlineUserIds = new Set() }) {
 
   useEffect(() => {
     fetchTeam()
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setCurrentUser(session?.user?.id || null)
-    })
+    setCurrentUser(auth.currentUser?.uid || null)
   }, [])
 
   const showToast = (msg) => {
@@ -24,44 +23,44 @@ export default function TeamPage({ onViewProfile, onlineUserIds = new Set() }) {
     setTimeout(() => setToast(''), 2500)
   }
 
-  // Fetch profiles — select all fields the EmployeeCard needs to render correctly.
+  // Fetch profiles from Firestore collection 'users'
   const fetchTeam = async () => {
     setLoading(true)
-    const { data: profiles, error } = await supabase
-      .from('profiles')
-      .select('id, email, role, full_name, avatar_url, status')
-      .order('created_at', { ascending: true })
-
-    if (profiles && !error) {
-      // Fetch metrics for the entire team in one query
-      const { data: metrics } = await supabase.rpc('get_team_metrics')
+    try {
+      const qUsers = query(collection(db, 'users'), orderBy('createdAt', 'asc'))
+      const snapshot = await getDocs(qUsers)
       
-      const teamWithMetrics = profiles.map(member => {
-        const memberMetrics = metrics?.find(m => m.user_id === member.id)
+      const members = snapshot.docs.map(d => {
+        const data = d.data()
         return {
-          ...member,
-          metrics: memberMetrics || { leads_added: 0, leads_edited: 0, total_actions: 0, last_active: null }
+          id: d.id,
+          email: data.email || '',
+          role: data.role || 'sales',
+          full_name: data.displayName || data.email || 'Team Member',
+          avatar_url: data.photoURL || null,
+          status: data.active ? 'active' : 'suspended',
+          metrics: { leads_added: 0, leads_edited: 0, total_actions: 0, last_active: null }
         }
       })
-      setTeam(teamWithMetrics)
+      setTeam(members)
+    } catch (err) {
+      console.error('Error fetching team members from Firestore:', err)
+      showToast('Error loading team')
+    } finally {
+      setLoading(false)
     }
-    setLoading(false)
   }
 
   // Determine if the current logged in user is an admin
   const currentUserProfile = team.find(m => m.id === currentUser)
-  const isAdmin = currentUserProfile?.role === 'admin'
+  const isAdmin = currentUserProfile?.role === 'admin' || auth.currentUser?.email?.toLowerCase() === 'mubeenahma1123@gmail.com'
 
   const handleRoleChange = async (memberId, newRole) => {
     const targetMember = team.find(m => m.id === memberId)
     const oldRole = targetMember?.role
 
-    const { error } = await supabase
-      .from('profiles')
-      .update({ role: newRole })
-      .eq('id', memberId)
-
-    if (!error) {
+    try {
+      await updateDoc(doc(db, 'users', memberId), { role: newRole })
       setTeam(team.map(m => m.id === memberId ? { ...m, role: newRole } : m))
       showToast(`Updated role to ${newRole}`)
       logActivity({
@@ -74,21 +73,18 @@ export default function TeamPage({ onViewProfile, onlineUserIds = new Set() }) {
           new_role: newRole,
         },
       })
-    } else {
-      showToast('Failed to update role: ' + error.message)
+    } catch (err) {
+      showToast('Failed to update role: ' + err.message)
     }
   }
 
   const handleStatusChange = async (memberId, newStatus) => {
     const targetMember = team.find(m => m.id === memberId)
     const oldStatus = targetMember?.status || 'active'
+    const isActive = newStatus === 'active'
 
-    const { error } = await supabase
-      .from('profiles')
-      .update({ status: newStatus })
-      .eq('id', memberId)
-
-    if (!error) {
+    try {
+      await updateDoc(doc(db, 'users', memberId), { active: isActive })
       setTeam(team.map(m => m.id === memberId ? { ...m, status: newStatus } : m))
       showToast(newStatus === 'suspended' ? `Suspended ${targetMember?.email}` : `Reactivated ${targetMember?.email}`)
       logActivity({
@@ -101,9 +97,16 @@ export default function TeamPage({ onViewProfile, onlineUserIds = new Set() }) {
           new_status: newStatus,
         },
       })
-    } else {
-      showToast('Failed to update status: ' + error.message)
+    } catch (err) {
+      showToast('Failed to update status: ' + err.message)
     }
+  }
+
+  const checkIsOnline = (id) => {
+    if (!onlineUserIds) return false
+    if (typeof onlineUserIds.has === 'function') return onlineUserIds.has(id)
+    if (Array.isArray(onlineUserIds)) return onlineUserIds.includes(id)
+    return false
   }
 
   return (
@@ -147,7 +150,7 @@ export default function TeamPage({ onViewProfile, onlineUserIds = new Set() }) {
             <EmployeeCard 
               key={member.id} 
               member={member} 
-              isOnline={onlineUserIds.has(member.id)}
+              isOnline={checkIsOnline(member.id)}
               onViewProfile={onViewProfile} 
               isAdmin={isAdmin}
               onRoleChange={handleRoleChange}

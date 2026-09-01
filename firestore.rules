@@ -1,0 +1,98 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Helper functions for auth & role checking
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function getUserData() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+
+    function hasRole(role) {
+      return isAuthenticated() && (
+        request.auth.token.role == role || 
+        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && getUserData().role == role)
+      );
+    }
+
+    function isAdmin() {
+      return hasRole('admin');
+    }
+
+    function isManager() {
+      return hasRole('manager');
+    }
+
+    function isAdminOrManager() {
+      return isAdmin() || isManager();
+    }
+
+    // ── USERS COLLECTION ──
+    match /users/{userId} {
+      allow read: if isAuthenticated();
+      allow create, update: if isAdmin() || request.auth.uid == userId;
+      allow delete: if isAdmin();
+    }
+
+    // ── PROJECTS COLLECTION ──
+    match /projects/{projectId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdminOrManager();
+    }
+
+    // ── LEADS COLLECTION ──
+    match /leads/{leadId} {
+      allow read: if isAuthenticated() && (
+        isAdminOrManager() || 
+        resource.data.assignedTo == request.auth.uid ||
+        resource.data.createdBy == request.auth.uid ||
+        resource.data.assignedTo == null ||
+        resource.data.assignedTo == ""
+      );
+      allow create: if isAuthenticated();
+      allow update: if isAuthenticated() && (
+        isAdminOrManager() || 
+        resource.data.assignedTo == request.auth.uid ||
+        resource.data.createdBy == request.auth.uid ||
+        resource.data.assignedTo == null
+      );
+      allow delete: if isAdminOrManager();
+    }
+
+    // ── CUSTOM COLUMNS METADATA COLLECTION ──
+    match /custom_columns/{columnId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdminOrManager();
+    }
+
+    // ── ACTIVITY LOGS COLLECTION ──
+    match /activity_logs/{logId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated();
+      allow update, delete: if isAdmin();
+    }
+
+    // ── CHAT CHANNELS & SUBCOLLECTION MESSAGES ──
+    match /chat_channels/{channelId} {
+      allow read: if isAuthenticated();
+      allow create, update: if isAuthenticated();
+      allow delete: if isAdminOrManager();
+
+      match /messages/{messageId} {
+        allow read: if isAuthenticated();
+        allow create: if isAuthenticated() && request.resource.data.senderId == request.auth.uid;
+        allow update, delete: if isAdmin() || resource.data.senderId == request.auth.uid;
+      }
+    }
+
+    // ── OUTREACH EVENTS COLLECTION ──
+    match /outreach_events/{eventId} {
+      allow read: if isAuthenticated() && (isAdminOrManager() || resource.data.userId == request.auth.uid);
+      allow create: if isAuthenticated() && request.resource.data.userId == request.auth.uid;
+      allow update, delete: if isAdmin();
+    }
+  }
+}

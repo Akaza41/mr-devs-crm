@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react'
-import { supabase } from '../lib/supabase'
+import { db } from '../lib/firebase'
+import { doc, getDoc, collection, getDocs } from 'firebase/firestore'
 import { logActivity } from '../lib/activityLogger'
 import LogTouchModal from './LogTouchModal'
 import { getLeadDisplayName } from '../lib/leadUtils'
@@ -22,12 +23,9 @@ export default function TodaysQueue({ leads = [], currentUserProfile, activeProj
   useEffect(() => {
     async function getCadence() {
       try {
-        const { data, error } = await supabase
-          .from('cadence_settings')
-          .select('*')
-          .eq('id', 1)
-          .maybeSingle()
-        if (!error && data) {
+        const snap = await getDoc(doc(db, 'settings', 'cadence'))
+        if (snap.exists()) {
+          const data = snap.data()
           setCadenceSettings({
             no_answer_days: data.no_answer_days ?? 2,
             voicemail_days: data.voicemail_days ?? 2,
@@ -35,7 +33,7 @@ export default function TodaysQueue({ leads = [], currentUserProfile, activeProj
           })
         }
       } catch (err) {
-        console.warn('Could not fetch cadence settings:', err)
+        console.warn('Could not fetch cadence settings from Firestore:', err)
       }
     }
     getCadence()
@@ -46,21 +44,20 @@ export default function TodaysQueue({ leads = [], currentUserProfile, activeProj
     async function fetchTouchHistory() {
       if (!leads || leads.length === 0) return
 
-      const leadIds = leads.map(l => l.id)
-      const { data, error } = await supabase
-        .from('outreach_touches')
-        .select('*')
-        .in('lead_id', leadIds)
-        .order('created_at', { ascending: true })
-
-      if (!error && data) {
-        // Group touches by lead_id
+      try {
+        const snap = await getDocs(collection(db, 'outreach_touches'))
         const map = {}
-        data.forEach(touch => {
-          if (!map[touch.lead_id]) map[touch.lead_id] = []
-          map[touch.lead_id].push(touch)
+        snap.docs.forEach(doc => {
+          const touch = { id: doc.id, ...doc.data() }
+          if (touch.lead_id || touch.leadId) {
+            const key = touch.lead_id || touch.leadId
+            if (!map[key]) map[key] = []
+            map[key].push(touch)
+          }
         })
         setTouchesMap(map)
+      } catch (err) {
+        console.warn('Touch history fetch error:', err.message)
       }
     }
 

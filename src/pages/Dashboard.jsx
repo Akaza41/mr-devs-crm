@@ -1,5 +1,19 @@
 import { useState, useEffect, useRef } from 'react'
-import { supabase } from '../lib/supabase'
+import { db } from '../lib/firebase'
+import {
+  collection,
+  doc,
+  getDocs,
+  addDoc,
+  updateDoc,
+  deleteDoc,
+  query,
+  where,
+  orderBy,
+  onSnapshot,
+  writeBatch,
+  serverTimestamp
+} from 'firebase/firestore'
 import LeftNav from '../components/LeftNav'
 import PipelineFunnel from '../components/PipelineFunnel'
 import TodaysQueue from '../components/TodaysQueue'
@@ -43,91 +57,99 @@ export default function Dashboard({ userProfile, role, onLogout }) {
   const [customColumns, setCustomColumns] = useState([])
   const [editingLead, setEditingLead] = useState(null)
   const [toast, setToast] = useState('')
-  const [onlineUserIds, setOnlineUserIds] = useState([])
+  const [onlineUserIds, setOnlineUserIds] = useState(new Set())
   const [teamMembers, setTeamMembers] = useState([])
 
   const leadsRef = useRef(leads)
   const historyRef = useRef([])
   const futureRef = useRef([])
 
+  // ── INITIAL DATA SNAPSHOTS ──
   useEffect(() => {
-    fetchProjects()
-    fetchCustomColumns()
-    fetchTeamMembers()
+    // 1. Projects Realtime Listener
+    const qProjects = query(collection(db, 'projects'), orderBy('createdAt', 'asc'))
+    const unsubProjects = onSnapshot(qProjects, (snapshot) => {
+      const projs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }))
+      setProjects(projs)
+      if (projs.length > 0 && !activeProject) {
+        setActiveProject(projs[0])
+      }
+    })
+
+    // 2. Custom Columns Realtime Listener
+    const qCols = query(collection(db, 'custom_columns'), orderBy('createdAt', 'asc'))
+    const unsubCols = onSnapshot(qCols, (snapshot) => {
+      const cols = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }))
+      setCustomColumns(cols)
+    })
+
+    // 3. Team Members Realtime Listener
+    const qUsers = query(collection(db, 'users'), orderBy('displayName', 'asc'))
+    const unsubUsers = onSnapshot(qUsers, (snapshot) => {
+      const members = snapshot.docs.map(doc => ({
+        id: doc.id,
+        full_name: doc.data().displayName || doc.data().email,
+        email: doc.data().email,
+        role: doc.data().role,
+        avatar_url: doc.data().photoURL
+      }))
+      setTeamMembers(members)
+      setOnlineUserIds(new Set(snapshot.docs.filter(d => d.data().active).map(d => d.id)))
+    })
+
+    return () => {
+      unsubProjects()
+      unsubCols()
+      unsubUsers()
+    }
   }, [])
 
-  async function fetchTeamMembers() {
-    const { data } = await supabase.from('profiles').select('id, full_name, email, role, avatar_url').order('full_name')
-    if (data) setTeamMembers(data)
-  }
-
-  const handleAssignLead = async (leadId, targetUserId) => {
-    const { error } = await supabase.from('leads').update({ assigned_to: targetUserId, updated_at: new Date().toISOString() }).eq('id', leadId)
-    if (error) {
-      showToast('Error assigning lead: ' + error.message)
-      return
-    }
-    const updated = leads.map(l => l.id === leadId ? { ...l, assigned_to: targetUserId } : l)
-    updateLeads(updated)
-    showToast('Lead assigned')
-  }
-
-  const handleBulkAssign = async (leadIds, targetUserId) => {
-    if (!leadIds || leadIds.length === 0) return
-    const { error } = await supabase.from('leads').update({ assigned_to: targetUserId, updated_at: new Date().toISOString() }).in('id', leadIds)
-    if (error) {
-      showToast('Error assigning leads: ' + error.message)
-      return
-    }
-    const idSet = new Set(leadIds)
-    const updated = leads.map(l => idSet.has(l.id) ? { ...l, assigned_to: targetUserId } : l)
-    updateLeads(updated)
-    showToast(`${leadIds.length} leads assigned`)
-  }
-
+  // ── LEADS REALTIME LISTENER PER ACTIVE PROJECT ──
   useEffect(() => {
-    if (activeProject) fetchLeads()
-  }, [activeProject])
-
-  useEffect(() => {
-    if (!userProfile) return
-    const channel = supabase.channel('online-users', {
-      config: { presence: { key: userProfile.id } }
-    })
-    channel
-      .on('presence', { event: 'sync' }, () => {
-        const state = channel.presenceState()
-        setOnlineUserIds(Object.keys(state))
-      })
-      .subscribe(async (status) => {
-        if (status === 'SUBSCRIBED') {
-          await channel.track({ online_at: new Date().toISOString() })
-        }
-      })
-    return () => { supabase.removeChannel(channel) }
-  }, [userProfile])
-
-  async function fetchProjects() {
-    const { data } = await supabase.from('projects').select('*').order('created_at', { ascending: true })
-    if (data && data.length > 0) {
-      setProjects(data)
-      if (!activeProject) setActiveProject(data[0])
-    }
-  }
-
-  async function fetchLeads() {
     if (!activeProject) return
     setLoading(true)
-    const { data } = await supabase.from('leads').select('*').eq('project_id', activeProject.id).order('id', { ascending: true })
-    const fetched = data || []
-    updateLeads(fetched)
-    setLoading(false)
-  }
 
-  async function fetchCustomColumns() {
-    const { data } = await supabase.from('custom_columns').select('*').order('created_at', { ascending: true })
-    if (data) setCustomColumns(data)
-  }
+    const qLeads = query(
+      collection(db, 'leads'),
+      where('projectId', '==', activeProject.id)
+    )
+
+    const unsubLeads = onSnapshot(qLeads, (snapshot) => {
+      const leadList = snapshot.docs.map(doc => {
+        const d = doc.data()
+        return {
+          id: doc.id,
+          project_id: d.projectId,
+          hospital_name: d.hospitalName || d.leadName || 'Unnamed Lead',
+          lead_name: d.leadName || d.hospitalName || 'Unnamed Lead',
+          address: d.address || '',
+          type: d.type || '',
+          rating: d.rating || null,
+          reviews: d.reviews || 0,
+          phone: d.phone || '',
+          number_type: d.numberType || 'No Number',
+          has_website: d.hasWebsite || 'No',
+          priority: d.priority || 'Medium',
+          stage: d.stage || 'New',
+          fb_found: d.fbFound || 'No',
+          contacted: d.contacted || 'No',
+          reply: d.reply || '—',
+          notes: d.notes || '',
+          assigned_to: d.assignedTo || null,
+          created_by: d.createdBy || null,
+          ...(d.customFields || {}),
+          ...d
+        }
+      })
+      updateLeads(leadList)
+      setLoading(false)
+    }, (err) => {
+      console.error('Error fetching leads snapshot:', err)
+      setLoading(false)
+    })
+
+    return () => unsubLeads()
+  }, [activeProject])
 
   const showToast = (msg) => {
     setToast(msg)
@@ -139,6 +161,37 @@ export default function Dashboard({ userProfile, role, onLogout }) {
     leadsRef.current = newLeads
   }
 
+  // ── ASSIGNMENT HANDLERS ──
+  const handleAssignLead = async (leadId, targetUserId) => {
+    try {
+      await updateDoc(doc(db, 'leads', String(leadId)), {
+        assignedTo: targetUserId,
+        updatedAt: serverTimestamp()
+      })
+      showToast('Lead assigned')
+    } catch (err) {
+      showToast('Error assigning lead: ' + err.message)
+    }
+  }
+
+  const handleBulkAssign = async (leadIds, targetUserId) => {
+    if (!leadIds || leadIds.length === 0) return
+    try {
+      const batch = writeBatch(db)
+      for (const id of leadIds) {
+        batch.update(doc(db, 'leads', String(id)), {
+          assignedTo: targetUserId,
+          updatedAt: serverTimestamp()
+        })
+      }
+      await batch.commit()
+      showToast(`${leadIds.length} leads assigned`)
+    } catch (err) {
+      showToast('Error assigning leads: ' + err.message)
+    }
+  }
+
+  // ── UNDO / REDO HISTORY ──
   const pushHistory = (action) => {
     historyRef.current = [...historyRef.current, action]
     futureRef.current = []
@@ -151,18 +204,18 @@ export default function Dashboard({ userProfile, role, onLogout }) {
     futureRef.current = [action, ...futureRef.current]
     historyRef.current = historyRef.current.slice(0, -1)
 
-    if (action.type === 'ADD') {
-      updateLeads(leadsRef.current.filter(l => l.id !== action.lead.id))
-      await supabase.from('leads').delete().eq('id', action.lead.id)
-    } else if (action.type === 'DELETE') {
-      updateLeads([...leadsRef.current, action.lead])
-      await supabase.from('leads').insert([action.lead])
-    } else if (action.type === 'UPDATE') {
-      updateLeads(leadsRef.current.map(l => l.id === action.id ? action.before : l))
-      await supabase.from('leads').update(action.before).eq('id', action.id)
+    try {
+      if (action.type === 'ADD') {
+        await deleteDoc(doc(db, 'leads', String(action.lead.id)))
+      } else if (action.type === 'DELETE') {
+        await updateDoc(doc(db, 'leads', String(action.lead.id)), action.lead)
+      } else if (action.type === 'UPDATE') {
+        await updateDoc(doc(db, 'leads', String(action.id)), action.before)
+      }
+      showToast('Undo done')
+    } catch (err) {
+      showToast('Undo error: ' + err.message)
     }
-    
-    showToast('Undo done')
   }
 
   async function redo() {
@@ -172,18 +225,18 @@ export default function Dashboard({ userProfile, role, onLogout }) {
     historyRef.current = [...historyRef.current, action]
     futureRef.current = futureRef.current.slice(1)
 
-    if (action.type === 'ADD') {
-      updateLeads([...leadsRef.current, action.lead])
-      await supabase.from('leads').insert([action.lead])
-    } else if (action.type === 'DELETE') {
-      updateLeads(leadsRef.current.filter(l => l.id !== action.lead.id))
-      await supabase.from('leads').delete().eq('id', action.lead.id)
-    } else if (action.type === 'UPDATE') {
-      updateLeads(leadsRef.current.map(l => l.id === action.id ? action.after : l))
-      await supabase.from('leads').update(action.after).eq('id', action.id)
+    try {
+      if (action.type === 'ADD') {
+        await updateDoc(doc(db, 'leads', String(action.lead.id)), action.lead)
+      } else if (action.type === 'DELETE') {
+        await deleteDoc(doc(db, 'leads', String(action.lead.id)))
+      } else if (action.type === 'UPDATE') {
+        await updateDoc(doc(db, 'leads', String(action.id)), action.after)
+      }
+      showToast('Redo done')
+    } catch (err) {
+      showToast('Redo error: ' + err.message)
     }
-
-    showToast('Redo done')
   }
 
   useEffect(() => {
@@ -205,147 +258,152 @@ export default function Dashboard({ userProfile, role, onLogout }) {
     return matchSearch && matchPriority && matchContacted && matchNumber && matchStage
   })
 
+  // ── SAVE / UPDATE LEAD ──
   const handleSave = async (form) => {
     if (!activeProject) return
     
-    if (editingLead) {
-      const { error } = await supabase.from('leads').update(form).eq('id', editingLead.id)
-      if (error) {
-        showToast('Error updating lead: ' + error.message)
-        return
+    const leadPayload = {
+      projectId: activeProject.id,
+      hospitalName: form.hospital_name || form.lead_name || 'Unnamed Lead',
+      leadName: form.lead_name || form.hospital_name || 'Unnamed Lead',
+      address: form.address || '',
+      type: form.type || '',
+      rating: form.rating ? Number(form.rating) : null,
+      reviews: form.reviews ? Number(form.reviews) : 0,
+      phone: form.phone || '',
+      numberType: form.number_type || 'No Number',
+      hasWebsite: form.has_website || 'No',
+      priority: form.priority || 'Medium',
+      stage: form.stage || 'New',
+      fbFound: form.fb_found || 'No',
+      contacted: form.contacted || 'No',
+      reply: form.reply || '—',
+      notes: form.notes || '',
+      updatedAt: serverTimestamp()
+    }
+
+    try {
+      if (editingLead) {
+        await updateDoc(doc(db, 'leads', String(editingLead.id)), leadPayload)
+        
+        pushHistory({ type: 'UPDATE', id: editingLead.id, before: editingLead, after: { ...editingLead, ...leadPayload } })
+        showToast('Lead updated')
+
+        logActivity({
+          action: ACTIONS.LEAD_UPDATED,
+          entityType: 'lead',
+          entityId: editingLead.id,
+          projectId: activeProject.id,
+          metadata: { lead_name: leadPayload.hospitalName },
+        })
+      } else {
+        leadPayload.createdAt = serverTimestamp()
+        leadPayload.createdBy = userProfile?.id || null
+        const docRef = await addDoc(collection(db, 'leads'), leadPayload)
+        
+        pushHistory({ type: 'ADD', lead: { id: docRef.id, ...leadPayload } })
+        showToast('Lead added')
+
+        logActivity({
+          action: ACTIONS.LEAD_CREATED,
+          entityType: 'lead',
+          entityId: docRef.id,
+          projectId: activeProject.id,
+          metadata: { lead_name: leadPayload.hospitalName },
+        })
       }
-
-      const before = { ...editingLead }
-      const after = { ...editingLead, ...form }
-      pushHistory({ type: 'UPDATE', id: editingLead.id, before, after })
-      
-      const updatedLeads = leadsRef.current.map(l => l.id === editingLead.id ? after : l)
-      updateLeads(updatedLeads)
-      showToast('Lead updated')
-
-      logActivity({
-        action: ACTIONS.LEAD_UPDATED,
-        entityType: 'lead',
-        entityId: editingLead.id,
-        projectId: activeProject.id,
-        metadata: { lead_name: form.hospital_name || editingLead.hospital_name },
-      })
-    } else {
-      const { data, error } = await supabase.from('leads').insert([{ ...form, project_id: activeProject.id }]).select().single()
-      if (error) {
-        showToast('Error adding lead')
-        return
-      }
-      
-      pushHistory({ type: 'ADD', lead: data })
-      const updatedLeads = [...leadsRef.current, data]
-      updateLeads(updatedLeads)
-      showToast('Lead added')
-
-      logActivity({
-        action: ACTIONS.LEAD_CREATED,
-        entityType: 'lead',
-        entityId: data.id,
-        projectId: activeProject.id,
-        metadata: { lead_name: data.hospital_name },
-      })
+    } catch (err) {
+      console.error('Save lead error:', err)
+      showToast('Error saving lead: ' + err.message)
     }
     setModalOpen(false)
   }
 
+  // ── DELETE LEAD ──
   const handleDelete = async (lead) => {
     if (!window.confirm(`Delete ${lead.hospital_name}?`)) return
     
-    const { error } = await supabase.from('leads').delete().eq('id', lead.id)
-    
-    if (error) {
-      showToast('Error deleting lead: ' + error.message)
-      return
+    try {
+      await deleteDoc(doc(db, 'leads', String(lead.id)))
+      pushHistory({ type: 'DELETE', lead })
+      showToast('Lead deleted')
+
+      logActivity({
+        action: ACTIONS.LEAD_DELETED,
+        entityType: 'lead',
+        entityId: lead.id,
+        projectId: activeProject?.id,
+        metadata: { lead_name: lead.hospital_name },
+      })
+    } catch (err) {
+      showToast('Error deleting lead: ' + err.message)
     }
-
-    pushHistory({ type: 'DELETE', lead })
-    
-    const updatedLeads = leadsRef.current.filter(l => l.id !== lead.id)
-    updateLeads(updatedLeads)
-    showToast('Lead deleted')
-
-    logActivity({
-      action: ACTIONS.LEAD_DELETED,
-      entityType: 'lead',
-      entityId: lead.id,
-      projectId: activeProject?.id,
-      metadata: { lead_name: lead.hospital_name },
-    })
   }
 
+  // ── SAVE / UPDATE PROJECT ──
   const handleSaveProject = async (form) => {
-    if (editingProject) {
-      const { data, error } = await supabase.from('projects').update(form).eq('id', editingProject.id).select().single()
-      if (error) {
-        showToast('Error updating project: ' + error.message)
-        return
-      }
-      if (data) {
-        setProjects(projects.map(p => p.id === data.id ? data : p))
-        if (activeProject?.id === data.id) setActiveProject(data)
+    try {
+      if (editingProject) {
+        await updateDoc(doc(db, 'projects', String(editingProject.id)), {
+          name: form.name,
+          updatedAt: serverTimestamp()
+        })
         showToast('Project updated')
 
         logActivity({
           action: ACTIONS.PROJECT_UPDATED,
           entityType: 'project',
-          entityId: data.id,
-          metadata: { project_name: data.name },
+          entityId: editingProject.id,
+          metadata: { project_name: form.name },
         })
-      }
-    } else {
-      const { data, error } = await supabase.from('projects').insert([form]).select().single()
-      if (error) {
-        showToast('Error creating project: ' + error.message)
-        return
-      }
-      if (data) {
-        setProjects([...projects, data])
-        setActiveProject(data)
+      } else {
+        const docRef = await addDoc(collection(db, 'projects'), {
+          name: form.name,
+          createdAt: serverTimestamp()
+        })
+        setActiveProject({ id: docRef.id, name: form.name })
         showToast('Project created')
 
         logActivity({
           action: ACTIONS.PROJECT_CREATED,
           entityType: 'project',
-          entityId: data.id,
-          metadata: { project_name: data.name },
+          entityId: docRef.id,
+          metadata: { project_name: form.name },
         })
       }
+    } catch (err) {
+      showToast('Error saving project: ' + err.message)
     }
     setProjectModalOpen(false)
     setEditingProject(null)
   }
 
+  // ── DELETE PROJECT ──
   const handleDeleteProject = async (project) => {
     if (projects.length <= 1) {
       alert('Cannot delete the only project.')
       return
     }
-    if (!window.confirm(`Delete project "${project.name}" and all its leads?`)) return
+    if (!window.confirm(`Delete project "${project.name}"?`)) return
     
-    const { error } = await supabase.from('projects').delete().eq('id', project.id)
-    if (error) {
-      showToast('Error deleting project: ' + error.message)
-      return
-    }
+    try {
+      await deleteDoc(doc(db, 'projects', String(project.id)))
+      
+      logActivity({
+        action: ACTIONS.PROJECT_DELETED,
+        entityType: 'project',
+        entityId: project.id,
+        metadata: { project_name: project.name },
+      })
 
-    logActivity({
-      action: ACTIONS.PROJECT_DELETED,
-      entityType: 'project',
-      entityId: project.id,
-      metadata: { project_name: project.name },
-    })
-
-    const remaining = projects.filter(p => p.id !== project.id)
-    setProjects(remaining)
-    if (activeProject?.id === project.id) {
-      setActiveProject(remaining[0])
+      const remaining = projects.filter(p => p.id !== project.id)
+      if (activeProject?.id === project.id && remaining.length > 0) {
+        setActiveProject(remaining[0])
+      }
+      showToast('Project deleted')
+    } catch (err) {
+      showToast('Error deleting project: ' + err.message)
     }
-    showToast('Project deleted')
   }
 
   const handleUpdateLeadState = (updatedLead) => {
@@ -495,7 +553,7 @@ export default function Dashboard({ userProfile, role, onLogout }) {
           activeProject={activeProject}
           customColumns={customColumns} 
           currentUserProfile={userProfile}
-          onRefreshCustomColumns={fetchCustomColumns}
+          onRefreshCustomColumns={() => {}}
           onClose={() => setImportFile(null)} 
           onSuccess={async (count, skipped = 0, duplicates = 0) => {
             setImportFile(null)
@@ -503,7 +561,6 @@ export default function Dashboard({ userProfile, role, onLogout }) {
             if (skipped > 0) parts.push(`${skipped} skipped (missing name)`)
             if (duplicates > 0) parts.push(`${duplicates} skipped (duplicates)`)
             showToast(parts.join(', '))
-            await fetchLeads()
           }} 
         />
       )}

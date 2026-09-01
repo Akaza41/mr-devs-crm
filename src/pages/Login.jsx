@@ -1,24 +1,15 @@
 import { useState } from 'react'
-import { supabase } from '../lib/supabase'
+import { auth, googleProvider } from '../lib/firebase'
+import { signInWithEmailAndPassword, signInWithPopup } from 'firebase/auth'
 
 export default function Login() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
-  const [error, setError] = useState(() => {
-    const hashParams = new URLSearchParams(window.location.hash.substring(1))
-    const queryParams = new URLSearchParams(window.location.search)
-    const errorDesc = hashParams.get('error_description') || queryParams.get('error_description')
-    const errorMsg = hashParams.get('error') || queryParams.get('error')
-    if (errorDesc || errorMsg) {
-      return decodeURIComponent(errorDesc || errorMsg).replace(/\+/g, ' ')
-    }
-    return ''
-  })
+  const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
   const [googleLoading, setGoogleLoading] = useState(false)
 
-  // ── SUPABASE LOGIN LOGIC ──
-  // Authenticates via Supabase. Success is handled automatically by App.jsx's listener.
+  // ── FIREBASE EMAIL / PASSWORD LOGIN ──
   const handleLogin = async () => {
     if (!email || !password) {
       setError('Please enter both email and password.')
@@ -27,27 +18,30 @@ export default function Login() {
     
     setLoading(true)
     setError('')
-    const { error: authError } = await supabase.auth.signInWithPassword({ email, password })
-    
-    if (authError) {
-      setError(authError.message)
+    try {
+      await signInWithEmailAndPassword(auth, email, password)
+      // App.jsx listener will pick up authentication automatically
+    } catch (authError) {
+      console.error('Firebase Login Error:', authError)
+      let message = authError.message
+      if (authError.code === 'auth/invalid-credential' || authError.code === 'auth/wrong-password' || authError.code === 'auth/user-not-found') {
+        message = 'Invalid email or password.'
+      }
+      setError(message)
       setLoading(false)
     }
-    // If successful, App.jsx's onAuthStateChange listener will detect it and switch views
   }
 
-  // ── GOOGLE OAUTH LOGIN LOGIC ──
+  // ── FIREBASE GOOGLE OAUTH LOGIN ──
   const handleGoogleLogin = async () => {
     setGoogleLoading(true)
     setError('')
-    const { error: authError } = await supabase.auth.signInWithOAuth({
-      provider: 'google',
-      options: {
-        redirectTo: window.location.origin,
-      },
-    })
-    if (authError) {
-      setError(authError.message)
+    try {
+      await signInWithPopup(auth, googleProvider)
+      // App.jsx listener will pick up authentication automatically
+    } catch (authError) {
+      console.error('Firebase Google Login Error:', authError)
+      setError(authError.message || 'Failed to sign in with Google.')
       setGoogleLoading(false)
     }
   }
@@ -67,7 +61,7 @@ export default function Login() {
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
           
-          {/* ── GOOGLE OAUTH BUTTON (STANDARD BRANDING) ── */}
+          {/* ── GOOGLE OAUTH BUTTON ── */}
           <button
             type="button"
             onClick={handleGoogleLogin}
@@ -149,4 +143,4 @@ export default function Login() {
       </div>
     </div>
   )
-}
+}
