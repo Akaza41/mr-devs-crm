@@ -26,6 +26,8 @@ export default function Login() {
       let message = authError.message
       if (authError.code === 'auth/invalid-credential' || authError.code === 'auth/wrong-password' || authError.code === 'auth/user-not-found') {
         message = 'Invalid email or password.'
+      } else if (authError.code === 'auth/configuration-not-found' || authError.message?.includes('configuration-not-found')) {
+        message = 'Firebase Authentication is not activated in Firebase Console for project "mr-devs". Please click "Get Started" in Firebase Console > Authentication.'
       }
       setError(message)
       setLoading(false)
@@ -41,7 +43,11 @@ export default function Login() {
       // App.jsx listener will pick up authentication automatically
     } catch (authError) {
       console.error('Firebase Google Login Error:', authError)
-      setError(authError.message || 'Failed to sign in with Google.')
+      let message = authError.message || 'Failed to sign in with Google.'
+      if (authError.code === 'auth/configuration-not-found' || authError.message?.includes('configuration-not-found')) {
+        message = 'Firebase Authentication is not activated in Firebase Console for project "mr-devs". Please click "Get Started" in Firebase Console > Authentication.'
+      }
+      setError(message)
       setGoogleLoading(false)
     }
   }
