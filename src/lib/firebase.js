@@ -5,13 +5,17 @@ import { getStorage } from 'firebase/storage'
 import { getFunctions } from 'firebase/functions'
 
 const firebaseConfig = {
-  apiKey:            import.meta.env.VITE_FIREBASE_API_KEY || "AIzaSyBJgygPJSFqZ8KlAdhVVrhseBPI6hgbrdw",
-  authDomain:        import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || "mr-devs.firebaseapp.com",
-  projectId:         import.meta.env.VITE_FIREBASE_PROJECT_ID || "mr-devs",
-  storageBucket:     import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || "mr-devs.firebasestorage.app",
-  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || "928226415627",
-  appId:             import.meta.env.VITE_FIREBASE_APP_ID || "1:928226415627:web:a0d2b029ffd9d37085a30e",
-  measurementId:     import.meta.env.VITE_FIREBASE_MEASUREMENT_ID || "G-JP9RVB09DH"
+  apiKey:            import.meta.env.VITE_FIREBASE_API_KEY,
+  authDomain:        import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
+  projectId:         import.meta.env.VITE_FIREBASE_PROJECT_ID,
+  storageBucket:     import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
+  appId:             import.meta.env.VITE_FIREBASE_APP_ID,
+  measurementId:     import.meta.env.VITE_FIREBASE_MEASUREMENT_ID
+}
+
+if (!firebaseConfig.apiKey) {
+  console.warn('⚠️ Firebase API key is missing. Please set VITE_FIREBASE_API_KEY in your environment variables (.env).')
 }
 
 // Initialize Firebase App (Singleton instance)

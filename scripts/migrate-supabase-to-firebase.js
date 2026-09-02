@@ -21,7 +21,7 @@ const isDryRun = process.argv.includes('--dry-run');
 const isVerifyOnly = process.argv.includes('--verify');
 
 // Load environment variables
-const supabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL || 'https://rojqcqxyspgfcnywkbxn.supabase.co';
+const supabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL || '';
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_ANON_KEY || '';
 
 if (!supabaseServiceKey) {
