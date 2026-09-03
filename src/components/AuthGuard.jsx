@@ -48,8 +48,18 @@ export default function AuthGuard({ userProfile, loading, unauthorized, children
   // ── UNAUTHORIZED USER (NO PROFILE MATCH IN WORKSPACE) ──
   if (unauthorized) {
     const handleTryDifferentAccount = async () => {
-      await signOut(auth)
-      await signInWithPopup(auth, googleProvider)
+      try {
+        await signOut(auth)
+        await signInWithPopup(auth, googleProvider)
+      } catch (err) {
+        if (
+          err.code !== 'auth/popup-closed-by-user' &&
+          err.code !== 'auth/cancelled-popup-request' &&
+          err.name !== 'AbortError'
+        ) {
+          console.error('Error signing in with different account:', err)
+        }
+      }
     }
 
     return (

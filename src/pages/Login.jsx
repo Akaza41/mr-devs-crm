@@ -42,6 +42,16 @@ export default function Login() {
       await signInWithPopup(auth, googleProvider)
       // App.jsx listener will pick up authentication automatically
     } catch (authError) {
+      // Ignore user-initiated popup closure or cancellation silently
+      if (
+        authError.code === 'auth/popup-closed-by-user' ||
+        authError.code === 'auth/cancelled-popup-request' ||
+        authError.name === 'AbortError'
+      ) {
+        setGoogleLoading(false)
+        return
+      }
+
       console.error('Firebase Google Login Error:', authError)
       let message = authError.message || 'Failed to sign in with Google.'
       if (authError.code === 'auth/configuration-not-found' || authError.message?.includes('configuration-not-found')) {
